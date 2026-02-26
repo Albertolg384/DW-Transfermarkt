@@ -1,0 +1,168 @@
+"""
+ETL para fact_transfers (traspasos de jugadores)
+PK artificial: transfer_id (autoincremental en PostgreSQL)
+"""
+import pandas as pd
+import re
+from sqlalchemy import text
+from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG, BATCH_SIZE
+
+def parse_transfer_fee(fee_str):
+    """Convierte strings de transfer_fee a EUR numérico"""
+    if pd.isna(fee_str) or fee_str == '':
+        return None
+    
+    fee_str = str(fee_str).strip().lower()
+    
+    # Casos especiales
+    if fee_str in ['free', 'loan', 'free transfer', '-', '?']:
+        return 0
+    
+    # Parsear valores con M (millones) o k (miles)
+    # Ejemplos: "€50.00m", "€1.5m", "€500k"
+    match = re.search(r'([\d.]+)\s*([mk])?', fee_str, re.IGNORECASE)
+    if match:
+        value = float(match.group(1))
+        unit = match.group(2)
+        
+        if unit and unit.lower() == 'm':
+            return value * 1_000_000
+        elif unit and unit.lower() == 'k':
+            return value * 1_000
+        else:
+            return value
+    
+    return None
+
+def etl_fact_transfers():
+    """Extrae, transforma y carga la tabla de hechos de traspasos"""
+    print("🔄 ETL: fact_transfers")
+    print("=" * 60)
+    
+    # EXTRACT
+    print("1️⃣ Extrayendo transfers.csv...")
+    df = pd.read_csv(CSV_FILES['transfers'], **PANDAS_READ_CONFIG)
+    print(f"   ✓ {len(df):,} registros leídos")
+    
+    # TRANSFORM
+    print("2️⃣ Transformando...")
+    
+    # Convertir fecha de traspaso y generar date_id
+    if 'transfer_date' in df.columns:
+        df['transfer_date'] = pd.to_datetime(df['transfer_date'], errors='coerce')
+        df['transfer_date_id'] = df['transfer_date'].dt.strftime('%Y%m%d').astype('Int64')
+    elif 'date' in df.columns:
+        df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        df['transfer_date_id'] = df['date'].dt.strftime('%Y%m%d').astype('Int64')
+    
+    # Parsear transfer_fee (puede venir como string "€50.00m")
+    if 'transfer_fee' in df.columns:
+        df['transfer_fee'] = df['transfer_fee'].apply(parse_transfer_fee)
+    
+    # Transformar transfer_season de '26/27' a 2026 (año de inicio en formato completo)
+    # Esto mantiene consistencia con dim_games.season y permite queries OLAP eficientes
+    if 'transfer_season' in df.columns:
+        def parse_season(season_str):
+            if pd.isna(season_str):
+                return None
+            season_str = str(season_str).strip()
+            # Formato esperado: '26/27' o similar
+            parts = season_str.split('/')
+            if len(parts) == 2:
+                year_short = int(parts[0])
+                # Determinar el siglo: si es < 50, es 20xx, sino 19xx
+                year_full = 2000 + year_short if year_short < 50 else 1900 + year_short
+                return year_full
+            return None
+        
+        df['transfer_season'] = df['transfer_season'].apply(parse_season)
+    
+    # Renombrar columnas para coincidir con esquema
+    fact_transfers = df.rename(columns={
+        'from_club_id': 'from_club_id',
+        'to_club_id': 'to_club_id'
+    })
+    
+    # Seleccionar columnas (NO incluir transfer_id, se autogenera)
+    columns_to_load = [
+        'player_id', 'from_club_id', 'to_club_id', 'transfer_date_id',
+        'transfer_season', 'player_name', 'from_club_name', 'to_club_name',
+        'transfer_fee', 'market_value_in_eur'
+    ]
+    
+    available_cols = [col for col in columns_to_load if col in fact_transfers.columns]
+    fact_transfers = fact_transfers[available_cols].copy()
+    
+    # Validación: eliminar registros con FK críticas NULL
+    # Nota: from_club_id y to_club_id pueden ser NULL si vienen/van fuera del dataset
+    critical_cols = ['player_id', 'transfer_date_id']
+    nulls_before = len(fact_transfers)
+    fact_transfers = fact_transfers.dropna(subset=critical_cols)
+    nulls_removed = nulls_before - len(fact_transfers)
+    if nulls_removed > 0:
+        print(f"   ⚠️ {nulls_removed} registros con FK críticas NULL eliminados")
+    
+    # Verificar integridad referencial
+    print("   🔍 Verificando integridad referencial...")
+    engine = get_engine()
+    
+    # Validar player_id
+    valid_players = pd.read_sql('SELECT player_id FROM dwh.dim_players', engine)
+    invalid_players = ~fact_transfers['player_id'].isin(valid_players['player_id'])
+    if invalid_players.any():
+        print(f"   ⚠️ {invalid_players.sum()} registros con player_id inválido eliminados")
+        fact_transfers = fact_transfers[~invalid_players]
+    
+    # Validar from_club_id (solo si no es NULL)
+    if 'from_club_id' in fact_transfers.columns:
+        valid_clubs = pd.read_sql('SELECT club_id FROM dwh.dim_clubs', engine)
+        invalid_from = (
+            fact_transfers['from_club_id'].notna() & 
+            ~fact_transfers['from_club_id'].isin(valid_clubs['club_id'])
+        )
+        if invalid_from.any():
+            print(f"   ⚠️ {invalid_from.sum()} registros con from_club_id inválido marcados como NULL")
+            fact_transfers.loc[invalid_from, 'from_club_id'] = None
+    
+    # Validar to_club_id (solo si no es NULL)
+    if 'to_club_id' in fact_transfers.columns:
+        valid_clubs = pd.read_sql('SELECT club_id FROM dwh.dim_clubs', engine)
+        invalid_to = (
+            fact_transfers['to_club_id'].notna() & 
+            ~fact_transfers['to_club_id'].isin(valid_clubs['club_id'])
+        )
+        if invalid_to.any():
+            print(f"   ⚠️ {invalid_to.sum()} registros con to_club_id inválido marcados como NULL")
+            fact_transfers.loc[invalid_to, 'to_club_id'] = None
+    
+    # Validar date_id
+    valid_dates = pd.read_sql('SELECT date_id FROM dwh.dim_date', engine)
+    invalid_dates = ~fact_transfers['transfer_date_id'].isin(valid_dates['date_id'])
+    if invalid_dates.any():
+        print(f"   ⚠️ {invalid_dates.sum()} registros con date_id inválido eliminados")
+        fact_transfers = fact_transfers[~invalid_dates]
+    
+    print(f"   ✓ {len(fact_transfers):,} registros listos para carga")
+    
+    # LOAD
+    print("3️⃣ Cargando a PostgreSQL (dwh.fact_transfers)...")
+    
+    fact_transfers.to_sql(
+        'fact_transfers',
+        engine,
+        schema='dwh',
+        if_exists='append',
+        index=False,
+        method=None,
+        chunksize=5000
+    )
+    
+    print("✅ fact_transfers cargada exitosamente")
+    
+    # Verificación
+    with engine.connect() as conn:
+        count = conn.execute(text("SELECT COUNT(*) FROM dwh.fact_transfers")).fetchone()[0]
+        print(f"   Verificación: {count:,} registros en dwh.fact_transfers\n")
+
+if __name__ == "__main__":
+    etl_fact_transfers()
