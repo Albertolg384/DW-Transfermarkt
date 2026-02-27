@@ -36,11 +36,13 @@ def etl_fact_game_events():
         suffixes=('_csv', '')
     )
     
-    # Renombrar columna de ID si es necesaria
-    if 'id' in fact_events.columns:
+
+    # Renombrar game_event_id --> event_id para coincidir con el DDL
+    if 'game_event_id' in fact_events.columns:
+        fact_events = fact_events.rename(columns={'game_event_id': 'event_id'})
+    elif 'id' in fact_events.columns:
         fact_events = fact_events.rename(columns={'id': 'event_id'})
     else:
-        # Generar event_id único si no existe
         fact_events['event_id'] = range(1, len(fact_events) + 1)
     
     # Seleccionar columnas
@@ -51,6 +53,58 @@ def etl_fact_game_events():
     
     available_cols = [col for col in columns_to_load if col in fact_events.columns]
     fact_events = fact_events[available_cols].copy()
+
+    # ------------------------------------------------------------------
+    # TRATAMIENTO DE NULLs E INCONSISTENCIAS POR TIPO DE EVENTO
+    # ------------------------------------------------------------------
+
+    # type --> 'Unknown' si no esta registrado
+    if 'type' in fact_events.columns:
+        fact_events['type'] = fact_events['type'].fillna('Unknown')
+
+    # description: limpiar coma/espacio inicial que viene del scraping
+    # Ej: ", Not reported" --> "Not reported" | ", Header, ..." --> "Header, ..."
+    if 'description' in fact_events.columns:
+        fact_events['description'] = (
+            fact_events['description']
+            .fillna('N/A')
+            .str.lstrip(', ')
+            .str.strip()
+            .replace('', 'N/A')
+        )
+
+    # minute --> -1 si no esta registrado
+    if 'minute' in fact_events.columns:
+        fact_events['minute'] = fact_events['minute'].fillna(-1).astype(int)
+
+    # ------------------------------------------------------------------
+    # player_in_id: SOLO aplica en Substitutions
+    # Si viene relleno en Cards o Goals --> inconsistencia, poner NULL
+    # ------------------------------------------------------------------
+    if 'player_in_id' in fact_events.columns:
+        inconsistencias_in = (
+            fact_events['player_in_id'].notna() &
+            (fact_events['type'] != 'Substitutions')
+        )
+        if inconsistencias_in.any():
+            print(f"{inconsistencias_in.sum()} player_in_id en evento no-sustitución → NULL")
+            fact_events.loc[inconsistencias_in, 'player_in_id'] = None
+
+    # ------------------------------------------------------------------
+    # player_assist_id: SOLO aplica en Goals
+    # Si viene relleno en Cards o Substitutions --> inconsistencia, poner NULL
+    # ------------------------------------------------------------------
+    if 'player_assist_id' in fact_events.columns:
+        inconsistencias_assist = (
+            fact_events['player_assist_id'].notna() &
+            (fact_events['type'] != 'Goals')
+        )
+        if inconsistencias_assist.any():
+            print(f"{inconsistencias_assist.sum()} player_assist_id en evento no-gol → NULL")
+            fact_events.loc[inconsistencias_assist, 'player_assist_id'] = None
+
+    # player_id: puede ser NULL en eventos de equipo se deja NULL (FK nullable en DDL)
+
     
     # Validación: eliminar registros con FK críticas NULL (player_id puede ser NULL)
     critical_cols = ['event_id', 'game_id', 'club_id', 'date_id']
@@ -105,6 +159,16 @@ def etl_fact_game_events():
             print(f"   ⚠️ {invalid_assist.sum()} registros con player_assist_id inválido eliminados")
             fact_events = fact_events[~invalid_assist]
     
+    # Reporte de NULLs residuales (solo en campos no-nullable)
+    cols_no_nullable = ['event_id', 'game_id', 'club_id', 'date_id', 'competition_id',
+                        'type', 'description', 'minute']
+    cols_no_nullable = [c for c in cols_no_nullable if c in fact_events.columns]
+    nulls_remaining = fact_events[cols_no_nullable].isnull().sum().sum()
+    if nulls_remaining == 0:
+        print(f"Sin NULLs en campos no-nullable")
+    else:
+        print(f"{nulls_remaining} NULLs residuales en campos no-nullable (revisar)")
+
     print(f"   ✓ {len(fact_events):,} registros listos para carga")
     
     # LOAD
