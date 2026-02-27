@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 ETL para fact_appearances (apariciones de jugadores en partidos)
 Desnormaliza appearances.csv + game_lineups.csv

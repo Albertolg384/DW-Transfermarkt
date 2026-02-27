@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 ETL para dim_clubs (tabla de clubes)
 """

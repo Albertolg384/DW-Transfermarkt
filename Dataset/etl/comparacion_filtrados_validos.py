@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Comparación entre partidos FILTRADOS vs VÁLIDOS
 Para entender por qué unos sí y otros no

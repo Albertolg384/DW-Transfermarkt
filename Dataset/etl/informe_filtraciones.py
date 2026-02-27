@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 INFORME DETALLADO DE FILTRACIONES ETL
 ======================================

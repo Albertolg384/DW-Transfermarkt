@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Generador de la tabla de dimensión dim_date
 Crea registros desde 2000-01-01 hasta 2030-12-31

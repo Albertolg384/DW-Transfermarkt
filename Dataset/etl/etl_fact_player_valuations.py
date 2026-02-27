@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 ETL para fact_player_valuations (tabla de hechos de valoraciones)
 PK artificial: valuation_id (autoincremental en PostgreSQL)

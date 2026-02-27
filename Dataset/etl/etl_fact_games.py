@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 ETL para fact_games (tabla de hechos de partidos)
 Desnormaliza games.csv + club_games.csv

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 ETL para fact_transfers (traspasos de jugadores)
 PK artificial: transfer_id (autoincremental en PostgreSQL)

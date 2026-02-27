@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Validación COMPLETA del ETL del Data Warehouse
 Verifica:

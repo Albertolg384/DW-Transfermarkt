@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 ETL para fact_game_events (eventos minuto a minuto en partidos)
 """

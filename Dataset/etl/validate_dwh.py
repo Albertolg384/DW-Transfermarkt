@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Validación post-carga del Data Warehouse
 Verifica conteos, integridad referencial y datos críticos

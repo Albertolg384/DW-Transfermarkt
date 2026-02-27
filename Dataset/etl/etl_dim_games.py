@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 ETL para dim_games (tabla de partidos como dimensión)
 """

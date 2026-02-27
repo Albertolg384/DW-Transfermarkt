@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Script de utilidad: resetear/limpiar tablas del DWH
 CUIDADO: Borra TODOS los datos (pero mantiene estructura)

@@ -1,9 +1,15 @@
+#!/usr/bin/env python3
+
 """
 Orquestador ETL: ejecuta todos los scripts en el orden correcto
 """
 import sys
 import subprocess
 from datetime import datetime
+import os
+
+# Directorio donde están todos los scripts ETL
+SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)))
 
 def print_header(title):
     """Imprime encabezado formateado"""
@@ -13,10 +19,11 @@ def print_header(title):
 
 def run_script(script_name):
     """Ejecuta un script Python y captura excepciones"""
+    script_path = os.path.join(SCRIPTS_DIR, script_name)
     print(f"▶️  Ejecutando: {script_name}")
     try:
         result = subprocess.run(
-            [sys.executable, script_name],
+            [sys.executable, script_path],
             check=True,
             capture_output=False,
             text=True

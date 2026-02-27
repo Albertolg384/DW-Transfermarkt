@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Ejemplo concreto de un partido filtrado
 """
