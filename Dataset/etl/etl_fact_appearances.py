@@ -50,6 +50,40 @@ def etl_fact_appearances():
     fact_appearances = fact_appearances.rename(columns={
         'player_club_id': 'club_id'
     })
+
+    # ------------------------------------------------------------------
+    # TRATAMIENTO DE NULLs
+    # ------------------------------------------------------------------
+    # Estos NULLs vienen del LEFT JOIN con game_lineups:
+    # si un jugador aparece en appearances pero no en game_lineups,
+    # sus columnas de lineup quedan NULL
+
+    # type: titular/suplente --> 'Unknown' si no esta en game_lineups
+    if 'type' in fact_appearances.columns:
+        fact_appearances['type'] = fact_appearances['type'].fillna('Unknown')
+
+    # position: posicion en el partido --> 'Unknown' si no esta registrada
+    if 'position' in fact_appearances.columns:
+        fact_appearances['position'] = fact_appearances['position'].fillna('Unknown')
+
+    # team_captain: booleano --> False si no esta registrado
+    # (si no hay dato, asumimos que no era capitan)
+    if 'team_captain' in fact_appearances.columns:
+        fact_appearances['team_captain'] = fact_appearances['team_captain'].fillna(0)
+        fact_appearances['team_captain'] = fact_appearances['team_captain'].apply(
+            lambda x: bool(int(x))
+        )
+
+    # Medidas numericas --> 0 si no hay dato
+    # (minutos, goles, asistencias, tarjetas pueden ser 0 reales o no registrados)
+    numeric_measures = ['minutes_played', 'goals', 'assists', 'yellow_cards', 'red_cards']
+    for col in numeric_measures:
+        if col in fact_appearances.columns:
+            fact_appearances[col] = fact_appearances[col].fillna(0).astype(int)
+
+    # player_name --> 'Unknown' si no está
+    if 'player_name' in fact_appearances.columns:
+        fact_appearances['player_name'] = fact_appearances['player_name'].fillna('Unknown')
     
     # Validación: eliminar registros con FK críticas NULL (ANTES de seleccionar columnas)
     critical_cols = ['appearance_id', 'game_id', 'player_id', 'club_id', 'competition_id', 'date_id']
@@ -72,12 +106,6 @@ def etl_fact_appearances():
     available_cols = [col for col in columns_to_load if col in fact_appearances.columns]
     fact_appearances = fact_appearances[available_cols].copy()
     
-    # Convertir team_captain a boolean (viene como 0.0/1.0)
-    if 'team_captain' in fact_appearances.columns:
-        fact_appearances['team_captain'] = fact_appearances['team_captain'].apply(
-            lambda x: None if pd.isna(x) else bool(int(x))
-        )
-    
     # Verificar integridad referencial
     print("   🔍 Verificando integridad referencial...")
     
@@ -95,7 +123,15 @@ def etl_fact_appearances():
         print(f"   ⚠️ {invalid_clubs.sum()} registros con club_id inválido eliminados")
         fact_appearances = fact_appearances[~invalid_clubs]
     
-    print(f"   ✓ {len(fact_appearances):,} registros listos para carga")
+    # Reporte de NULLs residuales
+    nulls_remaining = fact_appearances.isnull().sum().sum()
+    if nulls_remaining == 0:
+        print(f"Sin NULLs residuales en la tabla de hechos")
+    else:
+        print(f"{nulls_remaining} NULLs residuales detectados (revisar)")
+
+    
+    print(f"{len(fact_appearances):,} registros listos para carga")
     
     # LOAD
     print("3️⃣ Cargando a PostgreSQL (dwh.fact_appearances)...")
