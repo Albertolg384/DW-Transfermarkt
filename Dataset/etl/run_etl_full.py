@@ -17,6 +17,39 @@ def print_header(title):
     print(f"  {title}")
     print("=" * 80 + "\n")
 
+def truncate_all_tables():
+    """Limpia todas las tablas respetando el orden de dependencias"""
+    from config import get_engine
+    from sqlalchemy import text
+    
+    print("Limpiando/Vaciando los datos de las tablas del DWH " \
+        "por si ya estaban generadas dicha tablas.\n")
+    engine = get_engine()
+    
+    # Orden: primero facts (dependen de dims), luego dims
+    tables = [
+        # Facts primero (tienen FK hacia dims)
+        'fact_game_events',
+        'fact_appearances',
+        'fact_transfers',
+        'fact_player_valuations',
+        'fact_games',
+        # Luego dims
+        'dim_games',
+        'dim_players',
+        'dim_clubs',
+        'dim_competitions',
+        'dim_date',
+    ]
+    
+    with engine.connect() as conn:
+        for table in tables:
+            conn.execute(text(f"TRUNCATE TABLE dwh.{table} CASCADE;"))
+            print(f"{table} limpiada")
+        conn.commit()
+    
+    print("Todas las tablas limpias\n")
+
 def run_script(script_name):
     """Ejecuta un script Python y captura excepciones"""
     script_path = os.path.join(SCRIPTS_DIR, script_name)
@@ -44,6 +77,9 @@ def run_full_etl():
     
     print_header("🚀 INICIANDO ETL COMPLETO - DATA WAREHOUSE TRANSFERMARKT")
     print(f"Fecha/Hora inicio: {start_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+
+    # Limpiar/Vaciar los datos de las tablas por si ya estaban generadas dicha tablas.
+    truncate_all_tables()
     
     # Lista de scripts en orden de ejecución
     scripts = [
