@@ -67,10 +67,10 @@ def etl_fact_game_events():
     if 'description' in fact_events.columns:
         fact_events['description'] = (
             fact_events['description']
-            .fillna('N/A')
+            .fillna('Unknown')
             .str.lstrip(', ')
             .str.strip()
-            .replace('', 'N/A')
+            .replace('', 'Unknown')
         )
 
     # minute --> -1 si no esta registrado

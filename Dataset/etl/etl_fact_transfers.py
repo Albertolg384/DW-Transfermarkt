@@ -165,10 +165,10 @@ def etl_fact_transfers():
     if 'market_value_in_eur' in fact_transfers.columns:
         fact_transfers['market_value_in_eur'] = fact_transfers['market_value_in_eur'].fillna(-1)
 
-    # Textos --> 'N/A' si no hay nombre registrado
+    # Textos --> 'Unknown' si no hay nombre registrado
     for col in ['player_name', 'from_club_name', 'to_club_name']:
         if col in fact_transfers.columns:
-            fact_transfers[col] = fact_transfers[col].fillna('N/A')
+            fact_transfers[col] = fact_transfers[col].fillna('Unknown')
 
     # ------------------------------------------------------------------
 

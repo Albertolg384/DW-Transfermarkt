@@ -5,7 +5,12 @@ Configuración centralizada para el ETL del Data Warehouse Transfermarkt
 """
 import os
 from sqlalchemy import create_engine, text
-BASE_DIR = r"/home/alberto/Documentos/DW-Transfermarkt_Dataset/Dataset/Formato_csv"
+from urllib.parse import quote_plus
+
+# Ruta dinámica: detecta automáticamente la ubicación de los CSV
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))  # Directorio de config.py (etl/)
+PROJECT_DIR = os.path.dirname(SCRIPT_DIR)                 # Directorio padre (Dataset/)
+BASE_DIR = os.path.join(PROJECT_DIR, 'Formato_csv')
 
 CSV_FILES = {
     'players': os.path.join(BASE_DIR, 'players.csv'),
@@ -28,7 +33,7 @@ DB_CONFIG = {
     'port': 5432,
     'database': 'football_dwh',
     'user': 'postgres',
-    'password': 'pass'  # ⚠️ CAMBIAR antes de ejecutar
+    'password': 'Manupostgre'  # ⚠️ CAMBIAR antes de ejecutar
 }
 
 # Construcción de URI de conexión para SQLAlchemy
