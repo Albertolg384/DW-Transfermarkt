@@ -26,6 +26,9 @@ def etl_fact_games():
     # Eliminar columnas de posición de games si existen (usaremos las de club_games)
     games = games.drop(columns=['home_club_position', 'away_club_position'], errors='ignore')
     
+    # Normalizar valores de 'hosting' por si vienen con espacios o mayus distinta.
+    club_games['hosting'] = club_games['hosting'].str.strip()
+
     # Separar club_games en local y visitante
     home_games = club_games[club_games['hosting'] == 'Home'][['game_id', 'own_position']].rename(
         columns={'own_position': 'home_club_position'}
@@ -59,6 +62,37 @@ def etl_fact_games():
     
     fact_games = fact_games[columns_to_load].copy()
     
+    # ------------------------------------------------------------------
+    # TRATAMIENTO DE NULLs
+    # ------------------------------------------------------------------
+
+    # Posiciones en tabla: -1 si no están en club_games
+    # Ocurre en partidos de copa, play-offs o partidos sin datos de club_games
+    # Attendance y season: -1 si no registrados
+    int_cols = ['home_club_position', 'away_club_position', 'attendance', 'season']
+    for col in int_cols:
+        if col in fact_games.columns:
+            fact_games[col] = fact_games[col].fillna(-1).astype(int)
+
+    # Goles: 0 si no registrados (poco frecuente pero posible)
+    # goal_difference y total_goals también se recalculan tras el fillna
+    goals_cols = ['home_club_goals', 'away_club_goals']
+    for col in goals_cols:
+        if col in fact_games.columns:
+            fact_games[col] = fact_games[col].fillna(0).astype(int)
+
+    bool_measures = ['is_home_win', 'is_draw', 'is_away_win']
+    for col in bool_measures:
+        if col in fact_games.columns:
+            fact_games[col] = fact_games[col].fillna(False)
+
+    # Recalcular medidas derivadas tras el fillna de goles
+    fact_games['goal_difference'] = fact_games['home_club_goals'] - fact_games['away_club_goals']
+    fact_games['total_goals'] = fact_games['home_club_goals'] + fact_games['away_club_goals']
+    fact_games['is_home_win'] = fact_games['goal_difference'] > 0
+    fact_games['is_draw'] = fact_games['goal_difference'] == 0
+    fact_games['is_away_win'] = fact_games['goal_difference'] < 0
+
     # Validación: eliminar registros con FK críticas NULL
     critical_cols = ['game_id', 'competition_id', 'home_club_id', 'away_club_id', 'date_id']
     nulls_before = len(fact_games)
@@ -93,6 +127,13 @@ def etl_fact_games():
     if invalid_dates.any():
         print(f"   ⚠️ {invalid_dates.sum()} registros con date_id inválido eliminados")
         fact_games = fact_games[~invalid_dates]
+
+    # Reporte de NULLs residuales (debe ser 0 en todo)
+    nulls_remaining = fact_games.isnull().sum().sum()
+    if nulls_remaining == 0:
+        print(f"Sin NULLs residuales en la tabla de hechos")
+    else:
+        print(f"{nulls_remaining} NULLs residuales detectados (revisar)")
     
     print(f"   ✓ {len(fact_games):,} registros listos para carga")
     
