@@ -6,6 +6,7 @@ ETL para dim_games (tabla de partidos como dimensión)
 import pandas as pd
 from sqlalchemy import text
 from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG, BATCH_SIZE
+from null_handler import apply_null_rules, validate_no_nulls
 
 def etl_dim_games():
     """Extrae, transforma y carga la dimensión de partidos"""
@@ -57,33 +58,6 @@ def etl_dim_games():
             # Reemplazar 'nan' string con None
             dim_games[col] = dim_games[col].replace('nan', None)
     
-    # ------------------------------------------------------------------
-    # TRATAMIENTO DE NULLs (Kimball: nunca NULLs en dimensiones)
-    # ------------------------------------------------------------------
-
-    # Campos de texto --> 'N/A'
-    # Formaciones: no siempre se registran (partidos históricos, copas, etc.)
-    # Managers: pueden no estar registrados
-    # Arbitro, estadio, aggregate: opcionales segun la competicion
-    text_cols = [
-        'home_club_name', 'away_club_name',
-        'stadium', 'referee', 'url',
-        'home_club_formation', 'away_club_formation',
-        'home_club_manager_name', 'away_club_manager_name',
-        'aggregate', 'competition_type', 'round'
-    ]
-    for col in text_cols:
-        if col in dim_games.columns:
-            dim_games[col] = dim_games[col].fillna('N/A')
-
-    # Campos numericos enteros --> -1
-    # attendance NULL significa que no se registro asistencia
-    # season NULL es inusual pero posible en partidos sin temporada definida
-    int_cols = ['season', 'attendance']
-    for col in int_cols:
-        if col in dim_games.columns:
-            dim_games[col] = dim_games[col].fillna(-1).astype(int)
-
     # Eliminar duplicados
     original_count = len(dim_games)
     dim_games = dim_games.drop_duplicates(subset=['game_id'])
@@ -100,6 +74,9 @@ def etl_dim_games():
             dim_games['competition_id'].notna() & 
             dim_games['date'].notna()
         ]
+    
+    # TRATAMIENTO CENTRALIZADO DE NULLs (módulo null_handler)
+    dim_games = apply_null_rules(dim_games, 'dim_games', is_dimension=True)
     
     # Validar integridad referencial con dim_clubs
     print("   🔍 Verificando integridad referencial con dim_clubs...")
@@ -124,14 +101,10 @@ def etl_dim_games():
     if comp_removed > 0:
         print(f"   ⚠️ {comp_removed} registros con competiciones inexistentes eliminados")
     
-    # Reporte de NULLs residuales (deberia ser 0)
-    nulls_remaining = dim_games.isnull().sum().sum()
-    if nulls_remaining == 0:
-        print(f"Sin NULLs residuales en la dimensión")
-    else:
-        print(f"{nulls_remaining} NULLs residuales detectados (revisar)")
+    # Validación final de NULLs
+    validate_no_nulls(dim_games, 'dim_games')
 
-    print(f"{len(dim_games):,} registros listos para carga")
+    print(f"   ✓ {len(dim_games):,} registros listos para carga")
         
     # LOAD
     print("3️⃣ Cargando a PostgreSQL (dwh.dim_games)...")

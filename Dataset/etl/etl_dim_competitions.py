@@ -6,6 +6,7 @@ ETL para dim_competitions (tabla de competiciones)
 import pandas as pd
 from sqlalchemy import text
 from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG, BATCH_SIZE
+from null_handler import apply_null_rules, validate_no_nulls
 
 def etl_dim_competitions():
     """Extrae, transforma y carga la dimensión de competiciones"""
@@ -29,34 +30,6 @@ def etl_dim_competitions():
     
     dim_competitions = df[columns_to_keep].copy()
     
-    # ------------------------------------------------------------------
-    # TRATAMIENTO DE NULLs (Kimball: nunca NULLs en dimensiones)
-    # ------------------------------------------------------------------
-
-    # Campos de texto --> 'N/A'
-    # Ocurre en competiciones internacionales (Champions, Mundial, etc.)
-    # que no tienen pais, liga domestica ni confederacion asignada
-    text_cols = [
-        'competition_code', 'name', 'sub_type', 'type',
-        'country_name', 'domestic_league_code', 'confederation', 'url'
-    ]
-    for col in text_cols:
-        if col in dim_competitions.columns:
-            dim_competitions[col] = dim_competitions[col].fillna('N/A')
-
-    # Campos numericos enteros--> -1
-    # country_id NULL significa competicion sin país asignado (ej: UEFA Champions)
-    int_cols = ['country_id']
-    for col in int_cols:
-        if col in dim_competitions.columns:
-            dim_competitions[col] = dim_competitions[col].fillna(-1).astype(int)
-
-    # Booleanos --> False
-    bool_cols = ['is_major_national_league']
-    for col in bool_cols:
-        if col in dim_competitions.columns:
-            dim_competitions[col] = dim_competitions[col].fillna(False)
-    
     # Eliminar duplicados
     original_count = len(dim_competitions)
     dim_competitions = dim_competitions.drop_duplicates(subset=['competition_id'])
@@ -70,12 +43,9 @@ def etl_dim_competitions():
         print(f"   ⚠️ {nulls} registros con competition_id NULL eliminados")
         dim_competitions = dim_competitions[dim_competitions['competition_id'].notna()]
     
-    # Reporte de NULLs residuales (debe ser 0 en todo)
-    nulls_remaining = dim_competitions.isnull().sum().sum()
-    if nulls_remaining == 0:
-        print(f"Sin NULLs residuales en la dimensión")
-    else:
-        print(f"{nulls_remaining} NULLs residuales detectados (revisar)")
+    # TRATAMIENTO CENTRALIZADO DE NULLs (módulo null_handler)
+    dim_competitions = apply_null_rules(dim_competitions, 'dim_competitions', is_dimension=True)
+    validate_no_nulls(dim_competitions, 'dim_competitions')
 
     print(f"   ✓ {len(dim_competitions):,} registros listos para carga")
     

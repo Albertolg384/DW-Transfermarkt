@@ -6,6 +6,7 @@ ETL para fact_game_events (eventos minuto a minuto en partidos)
 import pandas as pd
 from sqlalchemy import text
 from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG, BATCH_SIZE
+from null_handler import apply_null_rules, validate_no_nulls
 
 def etl_fact_game_events():
     """Extrae, transforma y carga la tabla de hechos de eventos"""
@@ -54,57 +55,47 @@ def etl_fact_game_events():
     available_cols = [col for col in columns_to_load if col in fact_events.columns]
     fact_events = fact_events[available_cols].copy()
 
-    # ------------------------------------------------------------------
-    # TRATAMIENTO DE NULLs E INCONSISTENCIAS POR TIPO DE EVENTO
-    # ------------------------------------------------------------------
-
-    # type --> 'Unknown' si no esta registrado
-    if 'type' in fact_events.columns:
-        fact_events['type'] = fact_events['type'].fillna('Unknown')
-
-    # description: limpiar coma/espacio inicial que viene del scraping
-    # Ej: ", Not reported" --> "Not reported" | ", Header, ..." --> "Header, ..."
+    # Limpieza de description (lógica de negocio específica)
     if 'description' in fact_events.columns:
         fact_events['description'] = (
             fact_events['description']
-            .fillna('Unknown')
             .str.lstrip(', ')
             .str.strip()
-            .replace('', 'Unknown')
+            .replace('', None)  # Dejar NULL temporalmente
         )
 
-    # minute --> -1 si no esta registrado
-    if 'minute' in fact_events.columns:
-        fact_events['minute'] = fact_events['minute'].fillna(-1).astype(int)
-
     # ------------------------------------------------------------------
+    # LÓGICA DE NEGOCIO ESPECÍFICA (antes del tratamiento de NULLs)
+    # ------------------------------------------------------------------
+    
     # player_in_id: SOLO aplica en Substitutions
     # Si viene relleno en Cards o Goals --> inconsistencia, poner NULL
-    # ------------------------------------------------------------------
     if 'player_in_id' in fact_events.columns:
         inconsistencias_in = (
             fact_events['player_in_id'].notna() &
             (fact_events['type'] != 'Substitutions')
         )
         if inconsistencias_in.any():
-            print(f"{inconsistencias_in.sum()} player_in_id en evento no-sustitución → NULL")
+            print(f"   ⚠️ {inconsistencias_in.sum()} player_in_id en evento no-sustitución → NULL")
             fact_events.loc[inconsistencias_in, 'player_in_id'] = None
 
-    # ------------------------------------------------------------------
     # player_assist_id: SOLO aplica en Goals
     # Si viene relleno en Cards o Substitutions --> inconsistencia, poner NULL
-    # ------------------------------------------------------------------
     if 'player_assist_id' in fact_events.columns:
         inconsistencias_assist = (
             fact_events['player_assist_id'].notna() &
             (fact_events['type'] != 'Goals')
         )
         if inconsistencias_assist.any():
-            print(f"{inconsistencias_assist.sum()} player_assist_id en evento no-gol → NULL")
+            print(f"   ⚠️ {inconsistencias_assist.sum()} player_assist_id en evento no-gol → NULL")
             fact_events.loc[inconsistencias_assist, 'player_assist_id'] = None
 
-    # player_id: puede ser NULL en eventos de equipo se deja NULL (FK nullable en DDL)
+    # player_id: puede ser NULL en eventos de equipo (FK nullable en DDL)
 
+    
+    # TRATAMIENTO CENTRALIZADO DE NULLs (módulo null_handler)
+    fact_events = apply_null_rules(fact_events, 'fact_game_events', is_dimension=False)
+    validate_no_nulls(fact_events, 'fact_game_events')
     
     # Validación: eliminar registros con FK críticas NULL (player_id puede ser NULL)
     critical_cols = ['event_id', 'game_id', 'club_id', 'date_id']
@@ -118,6 +109,13 @@ def etl_fact_game_events():
     
     # Verificar integridad referencial (solo para valores no NULL)
     print("   🔍 Verificando integridad referencial...")
+    
+    # Validar game_id
+    valid_games = pd.read_sql('SELECT game_id FROM dwh.dim_games', engine)
+    invalid_games = ~fact_events['game_id'].isin(valid_games['game_id'])
+    if invalid_games.any():
+        print(f"   ⚠️ {invalid_games.sum()} registros con game_id inválido eliminados")
+        fact_events = fact_events[~invalid_games]
     
     # Validar club_id
     valid_clubs = pd.read_sql('SELECT club_id FROM dwh.dim_clubs', engine)
@@ -137,27 +135,28 @@ def etl_fact_game_events():
             print(f"   ⚠️ {invalid_players.sum()} registros con player_id inválido eliminados")
             fact_events = fact_events[~invalid_players]
     
-    # Validar player_in_id (solo si no es NULL)
+    # Validar player_in_id: inválidos → centinela -1 (Desconocido)
     if 'player_in_id' in fact_events.columns:
         valid_players = pd.read_sql('SELECT player_id FROM dwh.dim_players', engine)
         invalid_in = (
             fact_events['player_in_id'].notna() & 
+            (fact_events['player_in_id'] != -1) &
             ~fact_events['player_in_id'].isin(valid_players['player_id'])
         )
         if invalid_in.any():
-            print(f"   ⚠️ {invalid_in.sum()} registros con player_in_id inválido eliminados")
-            fact_events = fact_events[~invalid_in]
+            print(f"   ⚠️ {invalid_in.sum()} player_in_id fuera del dataset → centinela (-1)")
+            fact_events.loc[invalid_in, 'player_in_id'] = -1
     
-    # Validar player_assist_id (solo si no es NULL)
+    # Validar player_assist_id: inválidos → centinela -1 (Desconocido)
     if 'player_assist_id' in fact_events.columns:
-        valid_players = pd.read_sql('SELECT player_id FROM dwh.dim_players', engine)
         invalid_assist = (
             fact_events['player_assist_id'].notna() & 
+            (fact_events['player_assist_id'] != -1) &
             ~fact_events['player_assist_id'].isin(valid_players['player_id'])
         )
         if invalid_assist.any():
-            print(f"   ⚠️ {invalid_assist.sum()} registros con player_assist_id inválido eliminados")
-            fact_events = fact_events[~invalid_assist]
+            print(f"   ⚠️ {invalid_assist.sum()} player_assist_id fuera del dataset → centinela (-1)")
+            fact_events.loc[invalid_assist, 'player_assist_id'] = -1
     
     # Reporte de NULLs residuales (solo en campos no-nullable)
     cols_no_nullable = ['event_id', 'game_id', 'club_id', 'date_id', 'competition_id',

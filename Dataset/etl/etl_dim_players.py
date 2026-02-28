@@ -6,6 +6,7 @@ ETL para dim_players (tabla de jugadores)
 import pandas as pd
 from sqlalchemy import text
 from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG, BATCH_SIZE
+from null_handler import apply_null_rules, validate_no_nulls
 
 def etl_dim_players():
     """Extrae, transforma y carga la dimensión de jugadores"""
@@ -59,6 +60,10 @@ def etl_dim_players():
         print(f"   ⚠️ {nulls} registros con player_id NULL eliminados")
         dim_players = dim_players[dim_players['player_id'].notna()]
     
+    # TRATAMIENTO CENTRALIZADO DE NULLs (módulo null_handler)
+    dim_players = apply_null_rules(dim_players, 'dim_players', is_dimension=True)
+    validate_no_nulls(dim_players, 'dim_players')
+    
     print(f"   ✓ {len(dim_players):,} registros listos para carga")
     
     # LOAD
@@ -74,6 +79,26 @@ def etl_dim_players():
         method=None,
         chunksize=5000
     )
+    
+    # Insertar registro centinela (Kimball: Unknown Member Row)
+    with engine.connect() as conn:
+        conn.execute(text("""
+            INSERT INTO dwh.dim_players (player_id, first_name, last_name, name, last_season,
+                current_club_id, player_code, country_of_birth, city_of_birth,
+                country_of_citizenship, date_of_birth, sub_position, position,
+                foot, height_in_cm, contract_expiration_date, agent_name,
+                image_url, url, current_club_domestic_competition_id,
+                current_club_name, market_value_in_eur, highest_market_value_in_eur)
+            VALUES (-1, 'N/A', 'N/A', 'Desconocido', -1,
+                -1, 'N/A', 'N/A', 'N/A',
+                'N/A', '1900-01-01', 'N/A', 'N/A',
+                'N/A', -1, '9999-12-31', 'N/A',
+                'N/A', 'N/A', 'N/A',
+                'N/A', -1, -1)
+            ON CONFLICT (player_id) DO NOTHING
+        """))
+        conn.commit()
+    print("   🏷️ Registro centinela (player_id=-1, 'Desconocido') insertado")
     
     print("✅ dim_players cargada exitosamente")
     

@@ -7,6 +7,7 @@ PK artificial: valuation_id (autoincremental en PostgreSQL)
 import pandas as pd
 from sqlalchemy import text
 from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG, BATCH_SIZE
+from null_handler import apply_null_rules, validate_no_nulls
 
 def etl_fact_player_valuations():
     """Extrae, transforma y carga la tabla de hechos de valoraciones"""
@@ -37,6 +38,10 @@ def etl_fact_player_valuations():
     ]
     
     fact_valuations = fact_valuations[columns_to_load].copy()
+    
+    # TRATAMIENTO CENTRALIZADO DE NULLs (módulo null_handler)
+    fact_valuations = apply_null_rules(fact_valuations, 'fact_player_valuations', is_dimension=False)
+    validate_no_nulls(fact_valuations, 'fact_player_valuations')
     
     # Validación: eliminar registros con FK críticas NULL
     critical_cols = ['player_id', 'club_id', 'date_id']

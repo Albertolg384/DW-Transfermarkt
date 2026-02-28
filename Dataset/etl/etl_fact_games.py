@@ -7,6 +7,7 @@ Desnormaliza games.csv + club_games.csv
 import pandas as pd
 from sqlalchemy import text
 from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG, BATCH_SIZE
+from null_handler import apply_null_rules, validate_no_nulls
 
 def etl_fact_games():
     """Extrae, transforma y carga la tabla de hechos de partidos"""
@@ -63,30 +64,12 @@ def etl_fact_games():
     fact_games = fact_games[columns_to_load].copy()
     
     # ------------------------------------------------------------------
-    # TRATAMIENTO DE NULLs
+    # TRATAMIENTO CENTRALIZADO DE NULLs (módulo null_handler)
     # ------------------------------------------------------------------
+    fact_games = apply_null_rules(fact_games, 'fact_games', is_dimension=False)
+    validate_no_nulls(fact_games, 'fact_games')
 
-    # Posiciones en tabla: -1 si no están en club_games
-    # Ocurre en partidos de copa, play-offs o partidos sin datos de club_games
-    # Attendance y season: -1 si no registrados
-    int_cols = ['home_club_position', 'away_club_position', 'attendance', 'season']
-    for col in int_cols:
-        if col in fact_games.columns:
-            fact_games[col] = fact_games[col].fillna(-1).astype(int)
-
-    # Goles: 0 si no registrados (poco frecuente pero posible)
-    # goal_difference y total_goals también se recalculan tras el fillna
-    goals_cols = ['home_club_goals', 'away_club_goals']
-    for col in goals_cols:
-        if col in fact_games.columns:
-            fact_games[col] = fact_games[col].fillna(0).astype(int)
-
-    bool_measures = ['is_home_win', 'is_draw', 'is_away_win']
-    for col in bool_measures:
-        if col in fact_games.columns:
-            fact_games[col] = fact_games[col].fillna(False)
-
-    # Recalcular medidas derivadas tras el fillna de goles
+    # Recalcular medidas derivadas (tras el tratamiento de NULLs)
     fact_games['goal_difference'] = fact_games['home_club_goals'] - fact_games['away_club_goals']
     fact_games['total_goals'] = fact_games['home_club_goals'] + fact_games['away_club_goals']
     fact_games['is_home_win'] = fact_games['goal_difference'] > 0
@@ -104,6 +87,13 @@ def etl_fact_games():
     # Verificar que las FK existen en dimensiones (integridad referencial)
     print("   🔍 Verificando integridad referencial...")
     engine = get_engine()
+    
+    # Validar game_id
+    valid_games = pd.read_sql('SELECT game_id FROM dwh.dim_games', engine)
+    invalid_games = ~fact_games['game_id'].isin(valid_games['game_id'])
+    if invalid_games.any():
+        print(f"   ⚠️ {invalid_games.sum()} registros con game_id inválido eliminados")
+        fact_games = fact_games[~invalid_games]
     
     # Validar competition_id
     valid_competitions = pd.read_sql('SELECT competition_id FROM dwh.dim_competitions', engine)

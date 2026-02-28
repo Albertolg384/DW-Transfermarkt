@@ -7,6 +7,7 @@ Desnormaliza appearances.csv + game_lineups.csv
 import pandas as pd
 from sqlalchemy import text
 from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG, BATCH_SIZE
+from null_handler import apply_null_rules, validate_no_nulls
 
 def etl_fact_appearances():
     """Extrae, transforma y carga la tabla de hechos de apariciones"""
@@ -52,38 +53,15 @@ def etl_fact_appearances():
     })
 
     # ------------------------------------------------------------------
-    # TRATAMIENTO DE NULLs
+    # ------------------------------------------------------------------
+    # TRATAMIENTO CENTRALIZADO DE NULLs (módulo null_handler)
     # ------------------------------------------------------------------
     # Estos NULLs vienen del LEFT JOIN con game_lineups:
     # si un jugador aparece en appearances pero no en game_lineups,
     # sus columnas de lineup quedan NULL
-
-    # type: titular/suplente --> 'Unknown' si no esta en game_lineups
-    if 'type' in fact_appearances.columns:
-        fact_appearances['type'] = fact_appearances['type'].fillna('Unknown')
-
-    # position: posicion en el partido --> 'Unknown' si no esta registrada
-    if 'position' in fact_appearances.columns:
-        fact_appearances['position'] = fact_appearances['position'].fillna('Unknown')
-
-    # team_captain: booleano --> False si no esta registrado
-    # (si no hay dato, asumimos que no era capitan)
-    if 'team_captain' in fact_appearances.columns:
-        fact_appearances['team_captain'] = fact_appearances['team_captain'].fillna(0)
-        fact_appearances['team_captain'] = fact_appearances['team_captain'].apply(
-            lambda x: bool(int(x))
-        )
-
-    # Medidas numericas --> 0 si no hay dato
-    # (minutos, goles, asistencias, tarjetas pueden ser 0 reales o no registrados)
-    numeric_measures = ['minutes_played', 'goals', 'assists', 'yellow_cards', 'red_cards']
-    for col in numeric_measures:
-        if col in fact_appearances.columns:
-            fact_appearances[col] = fact_appearances[col].fillna(0).astype(int)
-
-    # player_name --> 'Unknown' si no está
-    if 'player_name' in fact_appearances.columns:
-        fact_appearances['player_name'] = fact_appearances['player_name'].fillna('Unknown')
+    
+    fact_appearances = apply_null_rules(fact_appearances, 'fact_appearances', is_dimension=False)
+    validate_no_nulls(fact_appearances, 'fact_appearances')
     
     # Validación: eliminar registros con FK críticas NULL (ANTES de seleccionar columnas)
     critical_cols = ['appearance_id', 'game_id', 'player_id', 'club_id', 'competition_id', 'date_id']
@@ -108,6 +86,13 @@ def etl_fact_appearances():
     
     # Verificar integridad referencial
     print("   🔍 Verificando integridad referencial...")
+    
+    # Validar game_id
+    valid_games = pd.read_sql('SELECT game_id FROM dwh.dim_games', engine)
+    invalid_games = ~fact_appearances['game_id'].isin(valid_games['game_id'])
+    if invalid_games.any():
+        print(f"   ⚠️ {invalid_games.sum()} registros con game_id inválido eliminados")
+        fact_appearances = fact_appearances[~invalid_games]
     
     # Validar player_id
     valid_players = pd.read_sql('SELECT player_id FROM dwh.dim_players', engine)

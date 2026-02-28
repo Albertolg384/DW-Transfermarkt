@@ -8,6 +8,7 @@ import pandas as pd
 import re
 from sqlalchemy import text
 from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG, BATCH_SIZE
+from null_handler import apply_null_rules, validate_no_nulls
 
 def parse_transfer_fee(fee_str):
     """Convierte strings de transfer_fee a EUR numérico"""
@@ -118,25 +119,25 @@ def etl_fact_transfers():
   
     valid_clubs = pd.read_sql('SELECT club_id FROM dwh.dim_clubs', engine)
 
-    # from_club_id: si no existe en dim_clubs es NULL (FK nullable en DDL)
+    # from_club_id: si no existe en dim_clubs → centinela -1 (Desconocido)
     if 'from_club_id' in fact_transfers.columns:
         invalid_from = (
             fact_transfers['from_club_id'].notna() &
             ~fact_transfers['from_club_id'].isin(valid_clubs['club_id'])
         )
         if invalid_from.any():
-            print(f"   ⚠️ {invalid_from.sum()} from_club_id fuera del dataset → NULL")
-            fact_transfers.loc[invalid_from, 'from_club_id'] = None
+            print(f"   ⚠️ {invalid_from.sum()} from_club_id fuera del dataset → centinela (-1)")
+            fact_transfers.loc[invalid_from, 'from_club_id'] = -1
 
-    # to_club_id: si no existe en dim_clubs es NULL (FK nullable en DDL)
+    # to_club_id: si no existe en dim_clubs → centinela -1 (Desconocido)
     if 'to_club_id' in fact_transfers.columns:
         invalid_to = (
             fact_transfers['to_club_id'].notna() &
             ~fact_transfers['to_club_id'].isin(valid_clubs['club_id'])
         )
         if invalid_to.any():
-            print(f"   ⚠️ {invalid_to.sum()} to_club_id fuera del dataset → NULL")
-            fact_transfers.loc[invalid_to, 'to_club_id'] = None
+            print(f"   ⚠️ {invalid_to.sum()} to_club_id fuera del dataset → centinela (-1)")
+            fact_transfers.loc[invalid_to, 'to_club_id'] = -1
     
     # Validar date_id
     valid_dates = pd.read_sql('SELECT date_id FROM dwh.dim_date', engine)
@@ -148,32 +149,18 @@ def etl_fact_transfers():
     # ------------------------------------------------------------------
     # TRATAMIENTO DE NULLs
     # ------------------------------------------------------------------
+    # TRATAMIENTO CENTRALIZADO DE NULLs (módulo null_handler)
+    # ------------------------------------------------------------------
+    fact_transfers = apply_null_rules(fact_transfers, 'fact_transfers', is_dimension=False)
+    validate_no_nulls(fact_transfers, 'fact_transfers')
 
-    # from_club_id / to_club_id: se dejan NULL (FK nullable en DDL)
-    # No se puede usar -1 porque violaría la FK constraint hacia dim_clubs
-    # Semántica: NULL = club fuera del dataset (retiro, agente libre, liga menor)
-
-    # transfer_season: -1 si no se pudo parsear
-    if 'transfer_season' in fact_transfers.columns:
-        fact_transfers['transfer_season'] = fact_transfers['transfer_season'].fillna(-1).astype(int)
-
-    # transfer_fee: -1 si desconocida (distinto de 0 que significa traspaso gratuito)
-    if 'transfer_fee' in fact_transfers.columns:
-        fact_transfers['transfer_fee'] = fact_transfers['transfer_fee'].fillna(-1)
-
-    # market_value_in_eur: -1 si sin valoracion registrada
-    if 'market_value_in_eur' in fact_transfers.columns:
-        fact_transfers['market_value_in_eur'] = fact_transfers['market_value_in_eur'].fillna(-1)
-
-    # Textos --> 'Unknown' si no hay nombre registrado
-    for col in ['player_name', 'from_club_name', 'to_club_name']:
-        if col in fact_transfers.columns:
-            fact_transfers[col] = fact_transfers[col].fillna('Unknown')
+    # from_club_id / to_club_id: quedan con -1 (FK opcionales: cantera/retiro)
+    # Nota: null_handler ya los convirtió a -1
 
     # ------------------------------------------------------------------
 
-    # Reporte de NULLs residuales (debería ser 0 en todo)
-    # from_club_id y to_club_id PUEDEN ser NULL legítimamente (FK nullable)
+    # Validación de NULLs (solo columnas críticas)
+    # from_club_id y to_club_id PUEDEN ser -1 legítimamente (FK opcionales)
     cols_no_nullable = ['player_id', 'transfer_date_id', 'transfer_season',
                         'player_name', 'from_club_name', 'to_club_name',
                         'transfer_fee', 'market_value_in_eur']
