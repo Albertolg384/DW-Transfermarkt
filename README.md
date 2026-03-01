@@ -478,7 +478,7 @@ python3 informe_filtraciones.py
 
 ## 📊 9. Consultas OLAP
 
-El archivo `consultas_olap.sql` contiene **54 consultas** organizadas en 13 secciones:
+El archivo `consultas_olap.sql` contiene **49 consultas** organizadas en 13 secciones:
 
 | Sección | Operación | Nº consultas |
 |---------|-----------|-------------|
@@ -494,7 +494,6 @@ El archivo `consultas_olap.sql` contiene **54 consultas** organizadas en 13 secc
 | 10 | Apéndice técnico / auditoría Kimball | 1 |
 | 11 | Análisis individual de jugadores | 5 |
 | 12 | Equipos, competición y táctica | 5 |
-| 13 | Mercado de fichajes avanzado | 5 |
 
 Ejecutar desde `psql` o cualquier cliente SQL (DBeaver, DataGrip, pgAdmin):
 
