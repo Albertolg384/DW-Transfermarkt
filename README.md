@@ -67,7 +67,29 @@ Esquema en **constelación estrella** con 5 dimensiones y 5 tablas de hechos:
 
 ---
 
-## 🐧 1. Instalación de PostgreSQL
+## 🐧 1. Instalación de PostgreSQL en Windows
+
+1. Descargar el instalador oficial desde: **https://www.postgresql.org/download/windows/**
+2. Ejecutar el `.exe` como administrador.
+3. Durante la instalación:
+   - Dejar el puerto por defecto: **5432**
+   - Establecer una contraseña para el usuario `postgres` — **apúntala**, la necesitarás en `config.py`
+   - Dejar marcado **Stack Builder** si aparece (se puede omitir al final)
+4. Al finalizar, PostgreSQL queda instalado como servicio de Windows y arranca automáticamente con el sistema.
+
+Para verificar que está corriendo, abrir el **Administrador de tareas → Servicios** y buscar `postgresql-x64-XX` con estado **En ejecución**, o ejecutar en PowerShell:
+
+```powershell
+Get-Service -Name postgresql*
+```
+
+Si el servicio estuviera detenido, iniciarlo con (PowerShell como administrador):
+
+```powershell
+Start-Service -Name "postgresql-x64-17"   # ajustar el número de versión
+```
+
+## 🐧 1. Instalación de PostgreSQL en Linux(Ubuntu)
 
 ```bash
 sudo apt update
@@ -82,8 +104,36 @@ sudo systemctl status postgresql
 ```
 
 ---
+## 🗃️ 2. Crear la base de datos en Windows
 
-## 🗃️ 2. Crear la base de datos
+PostgreSQL instala `psql` en su carpeta `bin` (normalmente `C:\Program Files\PostgreSQL\17\bin`). Para poder usarlo desde cualquier terminal hay que añadir esa ruta al **PATH** del sistema:
+
+1. Buscar **"Variables de entorno"** en el menú Inicio → **Editar las variables de entorno del sistema**
+2. En **Variables del sistema** → seleccionar `Path` → **Editar** → **Nuevo**
+3. Añadir: `C:\Program Files\PostgreSQL\17\bin` (ajustar el número de versión)
+4. Aceptar y cerrar. Abrir una terminal nueva para que el cambio surta efecto.
+
+Abrir **PowerShell** o **CMD** y conectarse:
+
+```powershell
+psql -U postgres
+```
+
+Introducir la contraseña establecida durante la instalación. Dentro del cliente `psql`, ejecutar:
+
+```sql
+CREATE DATABASE football_dwh;
+
+-- Verificar que se creó
+\l
+
+-- Salir
+\q
+```
+
+---
+
+## 🗃️ 2. Crear la base de datos en Linux (Ubuntu)
 
 ```bash
 # Entrar al cliente psql como superusuario postgres
@@ -133,8 +183,63 @@ ALTER USER postgres WITH PASSWORD 'tu_nueva_contraseña';
 > ```
 
 ---
+## 🐍 4. Instalar Python y dependencias en Windows
 
-## 🐍 4. Instalar Python y dependencias
+### Instalar Python
+
+1. Descargar Python desde: **https://www.python.org/downloads/windows/**
+2. Ejecutar el instalador y marcar **obligatoriamente** la opción **"Add Python to PATH"** antes de pulsar Install.
+3. Verificar la instalación abriendo una terminal nueva:
+
+```powershell
+python --version
+pip --version
+```
+
+### Crear y activar el entorno virtual
+
+Abrir **PowerShell** o **CMD**, navegar a la raíz del proyecto y ejecutar:
+
+```powershell
+# Crear el entorno virtual
+python -m venv nombre_entorno_virtual
+
+# Activar (CMD)
+nombre_entorno_virtual\Scripts\activate.bat
+
+# Activar (PowerShell)
+nombre_entorno_virtual\Scripts\Activate.ps1
+```
+
+> **Posible error en PowerShell** — si aparece un error sobre ejecución de scripts deshabilitada, ejecutar primero:
+> ```powershell
+> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> ```
+> Confirmar con `S` y volver a intentar la activación.
+
+Cuando el entorno esté activo el prompt mostrará `(nombre_entorno_virtual)` al principio. Para desactivarlo:
+
+```powershell
+deactivate
+```
+
+### Instalar las librerías
+
+Con el entorno virtual activo:
+
+```powershell
+pip install pandas sqlalchemy psycopg2-binary
+```
+
+| Librería | Para qué sirve |
+|----------|----------------|
+| `pandas` | Leer los CSVs, transformar los datos en DataFrames y aplicar toda la lógica ETL (filtros, merges, fillna, cálculos de columnas) |
+| `sqlalchemy` | ORM y motor de conexión a PostgreSQL. Permite ejecutar SQL directamente desde Python y usar `to_sql()` para insertar DataFrames enteros en la base de datos |
+| `psycopg2-binary` | Driver nativo de PostgreSQL para Python. SQLAlchemy lo usa internamente para comunicarse con la base de datos. La versión `-binary` incluye todas las dependencias compiladas, por lo que **no requiere instalar** nada adicional del sistema |
+
+---
+
+## 🐍 4. Instalar Python y dependencias en Linux (ubuntu)
 
 ```bash
 sudo apt install python3 python3-pip python3-venv -y
@@ -183,7 +288,84 @@ Esto crea el esquema `dwh` con todas las tablas, claves primarias, claves forán
 
 ---
 
-## ▶️ 6. Orden de ejecución
+## ▶️ 6. Orden de ejecución en Windows
+
+Abrir **PowerShell** o **CMD**, navegar a la raíz del proyecto y activar el entorno virtual:
+
+```powershell
+nombre_entorno_virtual\Scripts\activate.bat
+```
+
+### Opción A — Ejecución automática completa (recomendado)
+
+El script `run_etl_full.py` ejecuta todos los pasos en el orden correcto, trunca las tablas antes de cargar y para ante cualquier error:
+
+```powershell
+cd Proyecto\etl
+python run_etl_full.py
+```
+
+El orquestador pedirá confirmación antes de comenzar y mostrará un resumen final con el estado de cada script.
+
+---
+
+### Opción B — Ejecución manual paso a paso
+
+Si prefieres ejecutar cada script individualmente (útil para depurar o re-ejecutar solo una parte):
+
+```powershell
+cd Proyecto\etl
+```
+
+#### Paso 0 — Validar configuración
+
+```powershell
+python config.py
+```
+
+Comprueba que todos los CSVs existen y que la conexión a PostgreSQL funciona. Si falla aquí, revisar la ruta de los CSVs en `BASE_DIR` y la contraseña en `DB_CONFIG`.
+
+#### Paso 1 — Generar dimensión fecha
+
+```powershell
+python generate_dim_date.py
+```
+
+Genera 11.323 registros de fechas desde el 01/01/2000 hasta el 31/12/2030.
+
+#### Paso 2 — Cargar dimensiones (en este orden exacto)
+
+Las dimensiones deben cargarse antes que los hechos porque las tablas de hechos tienen claves foráneas hacia ellas. El orden dentro de las dimensiones también importa (`dim_games` depende de `dim_clubs` y `dim_competitions`):
+
+```powershell
+python etl_dim_competitions.py   # 1º — no depende de ninguna otra dimensión
+python etl_dim_clubs.py          # 2º — no depende de ninguna otra dimensión
+python etl_dim_players.py        # 3º — no depende de ninguna otra dimensión
+python etl_dim_games.py          # 4º — depende de dim_clubs y dim_competitions
+```
+
+> `etl_dim_clubs.py` y `etl_dim_players.py` insertan al final un **registro centinela** (`club_id = -1`, `player_id = -1`) que permite referenciar clubes o jugadores fuera del dataset sin violar las FK.
+
+#### Paso 3 — Cargar tablas de hechos (en este orden exacto)
+
+```powershell
+python etl_fact_games.py             # 1º — depende de dim_games, dim_clubs, dim_competitions, dim_date
+python etl_fact_appearances.py       # 2º — depende de dim_games, dim_players, dim_clubs
+python etl_fact_game_events.py       # 3º — depende de dim_games, dim_players, dim_clubs
+python etl_fact_transfers.py         # 4º — depende de dim_players, dim_clubs, dim_date
+python etl_fact_player_valuations.py # 5º — depende de dim_players, dim_clubs, dim_competitions, dim_date
+```
+
+#### Paso 4 — Validación post-carga
+
+```powershell
+python validate_dwh.py       # Conteos, integridad referencial y estadísticas básicas
+python check_nulls_final.py  # Auditoría de NULLs en todas las tablas del DWH
+```
+
+---
+
+## ▶️ 6. Orden de ejecución en Linux (Ubuntu)
 
 ### Opción A — Ejecución automática completa (recomendado)
 
@@ -321,7 +503,33 @@ psql -h localhost -U postgres -d football_dwh -f consultas_olap.sql | less
 
 ---
 
-## ⚠️ Solución de problemas frecuentes
+## ⚠️ Solución de problemas frecuentes en Windows
+
+**Error: `password authentication failed`**
+→ Revisar la contraseña en `config.py` → `DB_CONFIG['password']`.
+
+**Error: `could not connect to server`**
+→ Verificar que el servicio PostgreSQL está corriendo: Administrador de tareas → Servicios → `postgresql-x64-XX` debe estar **En ejecución**. Si no, iniciarlo con `Start-Service -Name "postgresql-x64-17"` en PowerShell como administrador.
+
+**Error: `schema "dwh" does not exist`**
+→ El DDL no se ha ejecutado todavía. Ver paso 5.
+
+**Error: `duplicate key value violates unique constraint`**
+→ Las tablas tienen datos de una ejecución anterior. El orquestador hace TRUNCATE automáticamente, pero si ejecutas scripts individuales debes limpiar primero o usar `run_etl_full.py`.
+
+**Error: `FileNotFoundError: players.csv not found`**
+→ La estructura de directorios no coincide con la esperada. Verificar que los CSVs están en `Proyecto\Formato_csv\` y que los scripts se ejecutan desde `Proyecto\etl\`.
+
+**Error: `'python' is not recognized as an internal or external command`**
+→ Python no está en el PATH. Reinstalar Python marcando **"Add Python to PATH"** durante la instalación, o añadirlo manualmente a las variables de entorno del sistema.
+
+**Error al activar el entorno virtual en PowerShell (`running scripts is disabled`)**
+→ Ejecutar `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` y confirmar con `S`.
+
+**El entorno virtual no está activo**
+→ Ejecutar `nombre_entorno_virtual\Scripts\activate.bat` (CMD) o `nombre_entorno_virtual\Scripts\Activate.ps1` (PowerShell) desde la raíz del proyecto antes de cualquier script Python. El prompt mostrará `(nombre_entorno_virtual)` cuando esté activo.
+
+## ⚠️ Solución de problemas frecuentes en Linux (Ubuntu)
 
 **Error: `password authentication failed`**
 --> Revisar la contraseña en `config.py` --> `DB_CONFIG['password']`.
