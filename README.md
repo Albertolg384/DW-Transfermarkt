@@ -45,6 +45,7 @@ DW-Transfermarkt/
 ├── ddl_dwh_schema.sql <--- DDL del esquema (ejecutar antes del ETL)
 └── README.md
 ```
+Nota: al clonarse el proyecto, los archivos .csv git no los descarga bien, por eso pasar esos archivos .xlsx a formato .csv y sustituirlos por los de la carpeta Formato_csv
 
 ---
 
