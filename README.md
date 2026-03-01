@@ -316,7 +316,7 @@ El archivo `consultas_olap.sql` contiene **54 consultas** organizadas en 13 secc
 Ejecutar desde `psql` o cualquier cliente SQL (DBeaver, DataGrip, pgAdmin):
 
 ```bash
-psql -h localhost -U postgres -d football_dwh -f consultas_olap.sql
+psql -h localhost -U postgres -d football_dwh -f consultas_olap.sql | less
 ```
 
 ---
