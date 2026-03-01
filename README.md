@@ -478,7 +478,7 @@ python3 informe_filtraciones.py
 
 ## 📊 9. Consultas OLAP
 
-El archivo `consultas_olap.sql` contiene **49 consultas** organizadas en 13 secciones:
+El archivo `consultas_olap.sql` contiene **49 consultas** organizadas en 12 secciones:
 
 | Sección | Operación | Nº consultas |
 |---------|-----------|-------------|
