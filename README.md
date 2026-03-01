@@ -498,7 +498,7 @@ El archivo `consultas_olap.sql` contiene **54 consultas** organizadas en 13 secc
 Ejecutar desde `psql` o cualquier cliente SQL (DBeaver, DataGrip, pgAdmin):
 
 ```bash
-psql -h localhost -U postgres -d football_dwh -f consultas_olap.sql | less
+psql -h localhost -U postgres -d football_dwh -f consultas_olap.sql | more
 ```
 
 ---
@@ -506,28 +506,28 @@ psql -h localhost -U postgres -d football_dwh -f consultas_olap.sql | less
 ## ⚠️ Solución de problemas frecuentes en Windows
 
 **Error: `password authentication failed`**
-→ Revisar la contraseña en `config.py` → `DB_CONFIG['password']`.
+--> Revisar la contraseña en `config.py` --> `DB_CONFIG['password']`.
 
 **Error: `could not connect to server`**
-→ Verificar que el servicio PostgreSQL está corriendo: Administrador de tareas → Servicios → `postgresql-x64-XX` debe estar **En ejecución**. Si no, iniciarlo con `Start-Service -Name "postgresql-x64-17"` en PowerShell como administrador.
+-->  Verificar que el servicio PostgreSQL está corriendo: Administrador de tareas -->  Servicios -->  `postgresql-x64-XX` debe estar **En ejecución**. Si no, iniciarlo con `Start-Service -Name "postgresql-x64-17"` en PowerShell como administrador.
 
 **Error: `schema "dwh" does not exist`**
-→ El DDL no se ha ejecutado todavía. Ver paso 5.
+-->  El DDL no se ha ejecutado todavía. Ver paso 5.
 
 **Error: `duplicate key value violates unique constraint`**
-→ Las tablas tienen datos de una ejecución anterior. El orquestador hace TRUNCATE automáticamente, pero si ejecutas scripts individuales debes limpiar primero o usar `run_etl_full.py`.
+-->  Las tablas tienen datos de una ejecución anterior. El orquestador hace TRUNCATE automáticamente, pero si ejecutas scripts individuales debes limpiar primero o usar `run_etl_full.py`.
 
 **Error: `FileNotFoundError: players.csv not found`**
-→ La estructura de directorios no coincide con la esperada. Verificar que los CSVs están en `Proyecto\Formato_csv\` y que los scripts se ejecutan desde `Proyecto\etl\`.
+-->  La estructura de directorios no coincide con la esperada. Verificar que los CSVs están en `Proyecto\Formato_csv\` y que los scripts se ejecutan desde `Proyecto\etl\`.
 
 **Error: `'python' is not recognized as an internal or external command`**
-→ Python no está en el PATH. Reinstalar Python marcando **"Add Python to PATH"** durante la instalación, o añadirlo manualmente a las variables de entorno del sistema.
+-->  Python no está en el PATH. Reinstalar Python marcando **"Add Python to PATH"** durante la instalación, o añadirlo manualmente a las variables de entorno del sistema.
 
 **Error al activar el entorno virtual en PowerShell (`running scripts is disabled`)**
-→ Ejecutar `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` y confirmar con `S`.
+-->  Ejecutar `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` y confirmar con `S`.
 
 **El entorno virtual no está activo**
-→ Ejecutar `nombre_entorno_virtual\Scripts\activate.bat` (CMD) o `nombre_entorno_virtual\Scripts\Activate.ps1` (PowerShell) desde la raíz del proyecto antes de cualquier script Python. El prompt mostrará `(nombre_entorno_virtual)` cuando esté activo.
+-->  Ejecutar `nombre_entorno_virtual\Scripts\activate.bat` (CMD) o `nombre_entorno_virtual\Scripts\Activate.ps1` (PowerShell) desde la raíz del proyecto antes de cualquier script Python. El prompt mostrará `(nombre_entorno_virtual)` cuando esté activo.
 
 ## ⚠️ Solución de problemas frecuentes en Linux (Ubuntu)
 
