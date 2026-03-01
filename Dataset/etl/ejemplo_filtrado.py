@@ -55,7 +55,7 @@ print(f"   ]")
 print(f"   ```")
 print(f"   ")
 print(f"   ➜ Este partido NO pasa el filtro porque:")
-print(f"      home_club_id {int(game['home_club_id'])} ∉ clubs.csv")
+print(f"      home_club_id {int(game['home_club_id'])} no pertenece clubs.csv")
 
 print(f"\n🔗 PASO 4: IMPACTO EN CASCADA")
 # Buscar appearances de este partido

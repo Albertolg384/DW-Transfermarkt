@@ -1499,6 +1499,623 @@ FROM dwh.fact_game_events ge
 
 ORDER BY tabla, fk_columna;
 
+-- ============================================================================
+-- 11. ANÁLISIS INDIVIDUAL DE JUGADORES
+-- ============================================================================
+-- Consultas centradas en el perfil, evolución y comparativa de jugadores.
+-- Combinan fact_appearances, fact_player_valuations y fact_transfers para
+-- construir una visión 360° del rendimiento individual.
+-- ============================================================================
+
+
+-- ---------------------------------------------------------------------------
+-- 11.1  SLICE + WINDOW — TOP 20 jugadores con más apariciones históricas
+--                         en las Big Five
+-- ---------------------------------------------------------------------------
+-- Pregunta: "¿Qué jugadores han sido más utilizados a lo largo de la historia?"
+-- Operaciones OLAP: SLICE (Big Five) + WINDOW (ROW_NUMBER, NTILE) +
+--                   Agregaciones (minutos, goles, partidos)
+-- Visualización: Barras horizontales con foto jugador y porcentaje de titularidades
+-- Insight esperado: Porteros y defensas dominan por longevidad.
+--   Los centrocampistas acumulan más minutos totales que los delanteros.
+-- ---------------------------------------------------------------------------
+SELECT
+    ROW_NUMBER() OVER (ORDER BY COUNT(DISTINCT fa.game_id) DESC)    AS ranking,
+    p.name                                                          AS jugador,
+    p.position                                                      AS posicion,
+    p.country_of_citizenship                                        AS pais,
+    COUNT(DISTINCT fa.game_id)                                      AS partidos_jugados,
+    SUM(fa.minutes_played)                                          AS minutos_totales,
+    ROUND(AVG(fa.minutes_played)::NUMERIC, 0)                       AS minutos_por_partido,
+    SUM(fa.goals)                                                   AS goles,
+    SUM(fa.assists)                                                 AS asistencias,
+    COUNT(*) FILTER (WHERE fa.type = 'starting_lineup')             AS titularidades,
+    COUNT(*) FILTER (WHERE fa.type = 'substitutes')                 AS veces_suplente,
+    ROUND(
+        100.0 * COUNT(*) FILTER (WHERE fa.type = 'starting_lineup')
+        / NULLIF(COUNT(*), 0), 1
+    )                                                               AS pct_titular,
+    NTILE(4) OVER (ORDER BY COUNT(DISTINCT fa.game_id) DESC)        AS cuartil_uso
+FROM dwh.fact_appearances fa
+    INNER JOIN dwh.dim_players p ON fa.player_id = p.player_id
+WHERE fa.competition_id IN ('ES1','GB1','IT1','FR1','L1')
+  AND p.player_id != -1
+GROUP BY p.name, p.position, p.country_of_citizenship
+HAVING COUNT(DISTINCT fa.game_id) >= 100
+ORDER BY partidos_jugados DESC
+LIMIT 20;
+
+
+-- ---------------------------------------------------------------------------
+-- 11.2  DICE + PIVOT — Rendimiento como capitán vs no capitán
+--                       ¿Rinden mejor los jugadores con el brazalete?
+-- ---------------------------------------------------------------------------
+-- Pregunta: "¿Marcan y asisten más los jugadores cuando son capitanes?"
+-- Operaciones OLAP: DICE (Big Five + posición) + PIVOT (capitán sí/no en columnas)
+--                 + WINDOW (RANK por posición)
+-- Visualización: Tabla comparativa lado a lado con delta y % cambio
+-- Insight esperado: Los capitanes tienen mejor rendimiento. Delanteros con
+--   brazalete marcan ~15% más por partido que sin él (efecto responsabilidad).
+-- ---------------------------------------------------------------------------
+WITH rendimiento AS (
+    SELECT
+        p.position                                                  AS posicion,
+        fa.team_captain,
+        COUNT(DISTINCT fa.game_id)                                  AS partidos,
+        SUM(fa.goals)                                               AS goles,
+        SUM(fa.assists)                                             AS asistencias,
+        SUM(fa.minutes_played)                                      AS minutos,
+        SUM(fa.yellow_cards)                                        AS amarillas
+    FROM dwh.fact_appearances fa
+        INNER JOIN dwh.dim_players p ON fa.player_id = p.player_id
+    WHERE fa.competition_id IN ('ES1','GB1','IT1','FR1','L1')
+      AND p.player_id != -1
+      AND p.position NOT IN ('Unknown', 'N/A')
+      AND fa.minutes_played > 0
+    GROUP BY p.position, fa.team_captain
+)
+SELECT
+    posicion,
+    -- Sin brazalete
+    SUM(partidos)   FILTER (WHERE NOT team_captain)                 AS partidos_normal,
+    ROUND(SUM(goles)::NUMERIC / NULLIF(SUM(partidos) FILTER (WHERE NOT team_captain), 0), 3)
+                                                                    AS goles_p90_normal,
+    ROUND(SUM(asistencias)::NUMERIC / NULLIF(SUM(partidos) FILTER (WHERE NOT team_captain), 0), 3)
+                                                                    AS asist_p90_normal,
+    -- Con brazalete
+    SUM(partidos)   FILTER (WHERE team_captain)                     AS partidos_capitan,
+    ROUND(SUM(goles)::NUMERIC / NULLIF(SUM(partidos) FILTER (WHERE team_captain), 0), 3)
+                                                                    AS goles_p90_capitan,
+    ROUND(SUM(asistencias)::NUMERIC / NULLIF(SUM(partidos) FILTER (WHERE team_captain), 0), 3)
+                                                                    AS asist_p90_capitan,
+    -- Delta
+    ROUND(
+        (SUM(goles)::NUMERIC / NULLIF(SUM(partidos) FILTER (WHERE team_captain), 0))
+      - (SUM(goles)::NUMERIC / NULLIF(SUM(partidos) FILTER (WHERE NOT team_captain), 0))
+    , 3)                                                            AS delta_goles_por_partido,
+    -- Tarjetas: ¿más responsabilidad = más disciplina?
+    ROUND(SUM(amarillas)::NUMERIC / NULLIF(SUM(partidos) FILTER (WHERE NOT team_captain), 0), 3)
+                                                                    AS amarillas_p90_normal,
+    ROUND(SUM(amarillas)::NUMERIC / NULLIF(SUM(partidos) FILTER (WHERE team_captain), 0), 3)
+                                                                    AS amarillas_p90_capitan
+FROM rendimiento
+GROUP BY posicion
+ORDER BY posicion;
+
+
+-- ---------------------------------------------------------------------------
+-- 11.3  DICE + WINDOW — Jugadores que han jugado en más clubes distintos
+--                        ("los más nómadas del fútbol europeo")
+-- ---------------------------------------------------------------------------
+-- Pregunta: "¿Qué jugadores han pasado por más equipos diferentes?"
+-- Operaciones OLAP: DICE (Big Five + rango temporal) + WINDOW (DENSE_RANK)
+--                 + STRING_AGG para listar los clubes
+-- Visualización: Treemap o tabla con línea de tiempo de clubes
+-- Insight esperado: Jugadores con poca continuidad ≠ mal rendimiento.
+--   Muchos nómadas son centrocampistas versátiles buscados por múltiples clubes.
+-- ---------------------------------------------------------------------------
+SELECT
+    ROW_NUMBER() OVER (ORDER BY COUNT(DISTINCT fa.club_id) DESC)    AS ranking,
+    p.name                                                          AS jugador,
+    p.position                                                      AS posicion,
+    p.country_of_citizenship                                        AS pais,
+    COUNT(DISTINCT fa.club_id)                                      AS num_clubes_distintos,
+    COUNT(DISTINCT fa.competition_id)                               AS ligas_distintas,
+    COUNT(DISTINCT d.season_start_year)                             AS temporadas_activo,
+    STRING_AGG(DISTINCT c.name, ' → ' ORDER BY c.name)             AS clubes,
+    SUM(fa.goals)                                                   AS goles_totales,
+    SUM(fa.assists)                                                 AS asistencias_totales,
+    COUNT(DISTINCT fa.game_id)                                      AS partidos_totales
+FROM dwh.fact_appearances fa
+    INNER JOIN dwh.dim_players p ON fa.player_id = p.player_id
+    INNER JOIN dwh.dim_clubs c   ON fa.club_id   = c.club_id
+    INNER JOIN dwh.dim_date d    ON fa.date_id   = d.date_id
+WHERE fa.competition_id IN ('ES1','GB1','IT1','FR1','L1')
+  AND p.player_id != -1
+  AND c.club_id   != -1
+GROUP BY p.name, p.position, p.country_of_citizenship
+HAVING COUNT(DISTINCT fa.club_id) >= 4
+ORDER BY num_clubes_distintos DESC, partidos_totales DESC
+LIMIT 25;
+
+
+-- ---------------------------------------------------------------------------
+-- 11.4  WINDOW (LAG + LEAD) — Jugadores que más aumentaron su valor de mercado
+--                              en un solo año (mayores revalorizaciones)
+-- ---------------------------------------------------------------------------
+-- Pregunta: "¿Qué jugadores pegaron el mayor salto de valor en un año?"
+-- Operaciones OLAP: WINDOW (LAG para año anterior, LEAD para año siguiente)
+--                 + SLICE (último valor conocido vs máximo)
+-- Visualización: Gráfico de flechas ascendentes (de → a), ordenado por % subida
+-- Insight esperado: Jugadores Sub-23 con temporada revelación.
+--   La mayor revalorización en 1 año suele triplicar el valor previo.
+-- ---------------------------------------------------------------------------
+WITH valoraciones_anuales AS (
+    SELECT
+        p.player_id,
+        p.name                                                      AS jugador,
+        p.position                                                  AS posicion,
+        p.country_of_citizenship                                    AS pais,
+        d.year                                                      AS anio,
+        MAX(pv.market_value_in_eur)                                 AS valor_maximo_anio
+    FROM dwh.fact_player_valuations pv
+        INNER JOIN dwh.dim_players p ON pv.player_id = p.player_id
+        INNER JOIN dwh.dim_date d    ON pv.date_id   = d.date_id
+    WHERE pv.market_value_in_eur > 0
+      AND p.player_id != -1
+      AND d.year BETWEEN 2015 AND 2024
+    GROUP BY p.player_id, p.name, p.position, p.country_of_citizenship, d.year
+),
+con_lag AS (
+    SELECT
+        jugador, posicion, pais, anio,
+        valor_maximo_anio                                           AS valor_actual,
+        LAG(valor_maximo_anio)  OVER (PARTITION BY player_id ORDER BY anio)
+                                                                    AS valor_anio_anterior,
+        LEAD(valor_maximo_anio) OVER (PARTITION BY player_id ORDER BY anio)
+                                                                    AS valor_anio_siguiente
+    FROM valoraciones_anuales
+)
+SELECT
+    ROW_NUMBER() OVER (ORDER BY
+        ROUND(100.0 * (valor_actual - valor_anio_anterior)
+            / NULLIF(valor_anio_anterior, 0), 1) DESC
+    )                                                               AS ranking,
+    jugador,
+    posicion,
+    pais,
+    anio                                                            AS anio_subida,
+    ROUND(valor_anio_anterior / 1e6, 1)                             AS valor_inicio_M,
+    ROUND(valor_actual       / 1e6, 1)                             AS valor_fin_M,
+    ROUND(100.0 * (valor_actual - valor_anio_anterior)
+        / NULLIF(valor_anio_anterior, 0), 1)                        AS subida_pct,
+    ROUND((valor_actual - valor_anio_anterior) / 1e6, 1)           AS subida_absoluta_M,
+    CASE
+        WHEN valor_anio_siguiente > valor_actual THEN 'SIGUE SUBIENDO ↑'
+        WHEN valor_anio_siguiente < valor_actual THEN 'Corrigió después ↓'
+        ELSE '—'
+    END                                                             AS tendencia_siguiente_anio
+FROM con_lag
+WHERE valor_anio_anterior IS NOT NULL
+  AND valor_anio_anterior > 1000000          -- Excluir valores insignificantes
+  AND valor_actual > valor_anio_anterior
+ORDER BY subida_pct DESC
+LIMIT 20;
+
+
+-- ---------------------------------------------------------------------------
+-- 11.5  DICE + PIVOT — Rendimiento por pie dominante
+--                       ¿Los zurdos son más productivos que los diestros?
+-- ---------------------------------------------------------------------------
+-- Pregunta: "¿Hay diferencias estadísticas de rendimiento entre zurdos y diestros?"
+-- Operaciones OLAP: DICE (Big Five + posición) + PIVOT (pie como columnas)
+--                 + Agregaciones por 90 min para comparar equitativamente
+-- Visualización: Radar chart (goles/90, asist/90, min jugados, amarillas/90)
+-- Insight esperado: Los zurdos son más escasos (~20%) pero con rendimiento
+--   similar a diestros. Los ambidiestros lideran en asistencias/90.
+-- ---------------------------------------------------------------------------
+SELECT
+    p.position                                                      AS posicion,
+    COUNT(DISTINCT p.player_id) FILTER (WHERE p.foot = 'left')     AS jugadores_zurdo,
+    COUNT(DISTINCT p.player_id) FILTER (WHERE p.foot = 'right')    AS jugadores_diestro,
+    COUNT(DISTINCT p.player_id) FILTER (WHERE p.foot = 'both')     AS jugadores_ambidiestro,
+    -- Goles por 90 min
+    ROUND(90.0 * SUM(fa.goals)   FILTER (WHERE p.foot = 'left')
+        / NULLIF(SUM(fa.minutes_played) FILTER (WHERE p.foot = 'left'), 0), 3)
+                                                                    AS goles_90_zurdo,
+    ROUND(90.0 * SUM(fa.goals)   FILTER (WHERE p.foot = 'right')
+        / NULLIF(SUM(fa.minutes_played) FILTER (WHERE p.foot = 'right'), 0), 3)
+                                                                    AS goles_90_diestro,
+    ROUND(90.0 * SUM(fa.goals)   FILTER (WHERE p.foot = 'both')
+        / NULLIF(SUM(fa.minutes_played) FILTER (WHERE p.foot = 'both'), 0), 3)
+                                                                    AS goles_90_ambidiestro,
+    -- Asistencias por 90 min
+    ROUND(90.0 * SUM(fa.assists) FILTER (WHERE p.foot = 'left')
+        / NULLIF(SUM(fa.minutes_played) FILTER (WHERE p.foot = 'left'), 0), 3)
+                                                                    AS asist_90_zurdo,
+    ROUND(90.0 * SUM(fa.assists) FILTER (WHERE p.foot = 'right')
+        / NULLIF(SUM(fa.minutes_played) FILTER (WHERE p.foot = 'right'), 0), 3)
+                                                                    AS asist_90_diestro,
+    ROUND(90.0 * SUM(fa.assists) FILTER (WHERE p.foot = 'both')
+        / NULLIF(SUM(fa.minutes_played) FILTER (WHERE p.foot = 'both'), 0), 3)
+                                                                    AS asist_90_ambidiestro,
+    -- Amarillas por 90 min
+    ROUND(90.0 * SUM(fa.yellow_cards) FILTER (WHERE p.foot = 'left')
+        / NULLIF(SUM(fa.minutes_played) FILTER (WHERE p.foot = 'left'), 0), 3)
+                                                                    AS amarillas_90_zurdo,
+    ROUND(90.0 * SUM(fa.yellow_cards) FILTER (WHERE p.foot = 'right')
+        / NULLIF(SUM(fa.minutes_played) FILTER (WHERE p.foot = 'right'), 0), 3)
+                                                                    AS amarillas_90_diestro
+FROM dwh.fact_appearances fa
+    INNER JOIN dwh.dim_players p ON fa.player_id = p.player_id
+WHERE fa.competition_id IN ('ES1','GB1','IT1','FR1','L1')
+  AND p.player_id != -1
+  AND p.foot IN ('left', 'right', 'both')
+  AND p.position NOT IN ('Unknown', 'N/A')
+  AND fa.minutes_played > 0
+GROUP BY p.position
+ORDER BY p.position;
+
+
+-- ============================================================================
+-- 12. ANÁLISIS DE EQUIPOS, COMPETICIÓN Y TÁCTICA
+-- ============================================================================
+-- Consultas enfocadas en el rendimiento colectivo, patrones de juego por equipo
+-- y dinámica de competición. Crucian fact_games con dim_clubs y dim_date.
+-- ============================================================================
+
+
+-- ---------------------------------------------------------------------------
+-- 12.1  WINDOW (RANK) — Mejores ataques y defensas históricas de cada liga
+--                        (Top 5 más goleadores + Top 5 menos goleados)
+-- ---------------------------------------------------------------------------
+-- Pregunta: "¿Qué equipo ha tenido el mejor ataque y la mejor defensa de la historia
+--            en cada liga?"
+-- Operaciones OLAP: SLICE (por liga) + WINDOW (DENSE_RANK por partición)
+--                 + Agregaciones (goles a favor, en contra, diferencia)
+-- Visualización: Tabla doble ranking por liga, color verde ataque / azul defensa
+-- Insight esperado: PSG lidera ataque en Ligue 1. Atlético Madrid mejor defensa
+--   histórica en La Liga. Bayern en Bundesliga domina ambas categorías.
+-- ---------------------------------------------------------------------------
+WITH estadisticas_club AS (
+    SELECT
+        comp.name                                                   AS liga,
+        c_home.name                                                 AS club,
+        -- Partidos como local
+        COUNT(*) FILTER (WHERE fg.home_club_id = c_home.club_id)    AS p_local,
+        SUM(fg.home_club_goals)
+            FILTER (WHERE fg.home_club_id = c_home.club_id)         AS gf_local,
+        SUM(fg.away_club_goals)
+            FILTER (WHERE fg.home_club_id = c_home.club_id)         AS gc_local,
+        -- Partidos como visitante
+        COUNT(*) FILTER (WHERE fg.away_club_id = c_home.club_id)    AS p_visitante,
+        SUM(fg.away_club_goals)
+            FILTER (WHERE fg.away_club_id = c_home.club_id)         AS gf_visitante,
+        SUM(fg.home_club_goals)
+            FILTER (WHERE fg.away_club_id = c_home.club_id)         AS gc_visitante
+    FROM dwh.fact_games fg
+        INNER JOIN dwh.dim_clubs c_home
+            ON (fg.home_club_id = c_home.club_id OR fg.away_club_id = c_home.club_id)
+        INNER JOIN dwh.dim_competitions comp ON fg.competition_id = comp.competition_id
+    WHERE fg.competition_id IN ('ES1','GB1','IT1','FR1','L1')
+      AND c_home.club_id != -1
+    GROUP BY comp.name, c_home.name
+    HAVING COUNT(*) >= 50
+),
+totales AS (
+    SELECT
+        liga, club,
+        (p_local + p_visitante)                                     AS partidos_totales,
+        (COALESCE(gf_local, 0) + COALESCE(gf_visitante, 0))        AS goles_favor,
+        (COALESCE(gc_local, 0) + COALESCE(gc_visitante, 0))        AS goles_contra,
+        (COALESCE(gf_local, 0) + COALESCE(gf_visitante, 0))
+      - (COALESCE(gc_local, 0) + COALESCE(gc_visitante, 0))        AS diferencia_goles
+    FROM estadisticas_club
+),
+con_ranking AS (
+    SELECT *,
+        DENSE_RANK() OVER (PARTITION BY liga ORDER BY goles_favor  DESC) AS rk_ataque,
+        DENSE_RANK() OVER (PARTITION BY liga ORDER BY goles_contra  ASC) AS rk_defensa,
+        ROUND(goles_favor ::NUMERIC / NULLIF(partidos_totales, 0), 2)    AS gf_por_partido,
+        ROUND(goles_contra::NUMERIC / NULLIF(partidos_totales, 0), 2)    AS gc_por_partido
+    FROM totales
+)
+SELECT
+    liga, club, partidos_totales,
+    goles_favor,  gf_por_partido,  rk_ataque,
+    goles_contra, gc_por_partido,  rk_defensa,
+    diferencia_goles
+FROM con_ranking
+WHERE rk_ataque <= 5 OR rk_defensa <= 5
+ORDER BY liga, rk_ataque;
+
+
+-- ---------------------------------------------------------------------------
+-- 12.2  DICE + CTE — ¿Gastar más en fichajes se traduce en más victorias?
+--                     Correlación entre inversión y rendimiento deportivo
+-- ---------------------------------------------------------------------------
+-- Pregunta: "¿Los equipos que más gastan en fichajes ganan más partidos?"
+-- Operaciones OLAP: DICE (Big Five + período 2018-2024) + JOIN entre
+--                   fact_transfers y fact_games + WINDOW (NTILE para cuartiles)
+-- Visualización: Scatter plot gasto vs % victorias, con línea de tendencia
+-- Insight esperado: Correlación positiva moderada (r ≈ 0.6). Los 3 clubes con
+--   mayor gasto tienen >55% victorias. Hay excepciones notables (Atletico Madrid).
+-- ---------------------------------------------------------------------------
+WITH gasto_por_club AS (
+    SELECT
+        c.club_id,
+        c.name                                                      AS club,
+        comp.name                                                   AS liga,
+        SUM(t.transfer_fee) FILTER (WHERE t.transfer_fee > 0)       AS gasto_total,
+        COUNT(*) FILTER (WHERE t.transfer_fee > 0)                  AS num_fichajes_con_precio
+    FROM dwh.fact_transfers t
+        INNER JOIN dwh.dim_clubs c ON t.to_club_id = c.club_id
+        LEFT  JOIN dwh.dim_competitions comp
+            ON c.domestic_competition_id = comp.competition_id
+    WHERE t.transfer_season BETWEEN 2018 AND 2024
+      AND c.club_id != -1
+      AND comp.competition_id IN ('ES1','GB1','IT1','FR1','L1')
+    GROUP BY c.club_id, c.name, comp.name
+),
+resultados_por_club AS (
+    SELECT
+        club_id,
+        SUM(victorias)                                              AS victorias,
+        SUM(empates)                                                AS empates,
+        SUM(derrotas)                                               AS derrotas,
+        SUM(victorias + empates + derrotas)                         AS partidos_totales,
+        SUM(goles_favor)                                            AS goles_favor,
+        SUM(goles_contra)                                           AS goles_contra
+    FROM (
+        -- Como local
+        SELECT
+            fg.home_club_id                                         AS club_id,
+            SUM(CASE WHEN fg.is_home_win THEN 1 ELSE 0 END)         AS victorias,
+            SUM(CASE WHEN fg.is_draw     THEN 1 ELSE 0 END)         AS empates,
+            SUM(CASE WHEN fg.is_away_win THEN 1 ELSE 0 END)         AS derrotas,
+            SUM(fg.home_club_goals)                                 AS goles_favor,
+            SUM(fg.away_club_goals)                                 AS goles_contra
+        FROM dwh.fact_games fg
+            INNER JOIN dwh.dim_date d ON fg.date_id = d.date_id
+        WHERE fg.competition_id IN ('ES1','GB1','IT1','FR1','L1')
+          AND d.season_start_year BETWEEN 2018 AND 2024
+        GROUP BY fg.home_club_id
+
+        UNION ALL
+
+        -- Como visitante
+        SELECT
+            fg.away_club_id,
+            SUM(CASE WHEN fg.is_away_win THEN 1 ELSE 0 END),
+            SUM(CASE WHEN fg.is_draw     THEN 1 ELSE 0 END),
+            SUM(CASE WHEN fg.is_home_win THEN 1 ELSE 0 END),
+            SUM(fg.away_club_goals),
+            SUM(fg.home_club_goals)
+        FROM dwh.fact_games fg
+            INNER JOIN dwh.dim_date d ON fg.date_id = d.date_id
+        WHERE fg.competition_id IN ('ES1','GB1','IT1','FR1','L1')
+          AND d.season_start_year BETWEEN 2018 AND 2024
+        GROUP BY fg.away_club_id
+    ) combinado
+    GROUP BY club_id
+)
+SELECT
+    g.club,
+    g.liga,
+    ROUND(g.gasto_total / 1e6, 1)                                   AS gasto_M,
+    g.num_fichajes_con_precio,
+    r.partidos_totales,
+    r.victorias,
+    ROUND(100.0 * r.victorias / NULLIF(r.partidos_totales, 0), 1)   AS pct_victorias,
+    r.goles_favor - r.goles_contra                                  AS dif_goles,
+    NTILE(4) OVER (ORDER BY g.gasto_total DESC)                     AS cuartil_gasto,
+    NTILE(4) OVER (ORDER BY
+        100.0 * r.victorias / NULLIF(r.partidos_totales, 0) DESC)   AS cuartil_rendimiento
+FROM gasto_por_club g
+    INNER JOIN resultados_por_club r ON g.club_id = r.club_id
+WHERE r.partidos_totales >= 50
+ORDER BY g.gasto_total DESC NULLS LAST
+LIMIT 30;
+
+
+-- ---------------------------------------------------------------------------
+-- 12.3  ROLL-UP + WINDOW — ¿Cuál fue la temporada más goleadora de cada liga?
+--                           Con comparativa respecto a la media histórica
+-- ---------------------------------------------------------------------------
+-- Pregunta: "¿En qué temporada se marcaron más goles? ¿Qué liga ha sido más
+--            estable en su producción goleadora?"
+-- Operaciones OLAP: ROLL-UP (temporada dentro de liga) + WINDOW (LAG, RANK,
+--                   AVG histórico como referencia)
+-- Visualización: Líneas de evolución por liga con banda de desviación estándar
+-- Insight esperado: Post-COVID (2021/22) hubo un repunte goleador.
+--   Bundesliga la más volátil, Serie A la más estable.
+-- ---------------------------------------------------------------------------
+WITH goles_por_temporada AS (
+    SELECT
+        comp.name                                                   AS liga,
+        d.season_start_year                                         AS temporada,
+        COUNT(*)                                                    AS partidos,
+        SUM(fg.total_goals)                                         AS goles_totales,
+        ROUND(AVG(fg.total_goals)::NUMERIC, 3)                      AS promedio_goles
+    FROM dwh.fact_games fg
+        INNER JOIN dwh.dim_date d          ON fg.date_id         = d.date_id
+        INNER JOIN dwh.dim_competitions comp ON fg.competition_id = comp.competition_id
+    WHERE fg.competition_id IN ('ES1','GB1','IT1','FR1','L1')
+      AND d.season_start_year BETWEEN 2010 AND 2024
+    GROUP BY comp.name, d.season_start_year
+    HAVING COUNT(*) >= 30
+)
+SELECT
+    liga,
+    temporada,
+    partidos,
+    goles_totales,
+    promedio_goles,
+    -- Media histórica de esa liga (para comparar)
+    ROUND(AVG(promedio_goles) OVER (PARTITION BY liga)::NUMERIC, 3)
+                                                                    AS media_historica_liga,
+    -- Desviación respecto a la media
+    ROUND((promedio_goles - AVG(promedio_goles) OVER (PARTITION BY liga))::NUMERIC, 3)
+                                                                    AS desv_vs_media,
+    -- Variación año a año
+    ROUND((promedio_goles - LAG(promedio_goles) OVER (PARTITION BY liga ORDER BY temporada))::NUMERIC, 3)
+                                                                    AS variacion_vs_temporada_anterior,
+    -- Ranking dentro de la liga (1 = más goleadora)
+    RANK() OVER (PARTITION BY liga ORDER BY promedio_goles DESC)    AS rk_temporada_goleadora,
+    -- Máximo y mínimo histórico de la liga
+    MAX(promedio_goles) OVER (PARTITION BY liga)                    AS max_historico,
+    MIN(promedio_goles) OVER (PARTITION BY liga)                    AS min_historico
+FROM goles_por_temporada
+ORDER BY liga, temporada;
+
+
+-- ---------------------------------------------------------------------------
+-- 12.4  DICE + RANKING — Los 25 partidos con más goles de la historia
+--                         en las 5 grandes ligas
+-- ---------------------------------------------------------------------------
+-- Pregunta: "¿Cuáles han sido los partidos más locos y espectaculares?"
+-- Operaciones OLAP: DICE (Big Five) + WINDOW (ROW_NUMBER) +
+--                   Cálculo de diferencia y tipo de resultado
+-- Visualización: Tarjetas de partido estilo marcador con escudo y fecha
+-- Insight esperado: Varios partidos con 9-10 goles totales. La Bundesliga
+--   está sobrerrepresentada (estilo más ofensivo). Muchos no terminan en empate.
+-- ---------------------------------------------------------------------------
+SELECT
+    ROW_NUMBER() OVER (ORDER BY fg.total_goals DESC, fg.goal_difference DESC)
+                                                                    AS ranking,
+    comp.name                                                       AS liga,
+    d.full_date                                                     AS fecha,
+    d.season_start_year                                             AS temporada,
+    g.home_club_name                                                AS local,
+    fg.home_club_goals                                              AS goles_local,
+    fg.away_club_goals                                              AS goles_visitante,
+    g.away_club_name                                                AS visitante,
+    fg.total_goals                                                  AS total_goles,
+    ABS(fg.goal_difference)                                         AS diferencia,
+    CASE
+        WHEN fg.is_home_win  THEN 'Victoria local'
+        WHEN fg.is_away_win  THEN 'Victoria visitante'
+        ELSE                      'Empate'
+    END                                                             AS resultado,
+    COUNT(ge.event_id) FILTER (WHERE ge.type = 'Cards')            AS tarjetas_totales,
+    COUNT(ge.event_id) FILTER (WHERE ge.type = 'Substitutions')    AS sustituciones
+FROM dwh.fact_games fg
+    INNER JOIN dwh.dim_games        g    ON fg.game_id        = g.game_id
+    INNER JOIN dwh.dim_date         d    ON fg.date_id        = d.date_id
+    INNER JOIN dwh.dim_competitions comp ON fg.competition_id = comp.competition_id
+    LEFT  JOIN dwh.fact_game_events ge   ON fg.game_id        = ge.game_id
+WHERE fg.competition_id IN ('ES1','GB1','IT1','FR1','L1')
+GROUP BY
+    comp.name, d.full_date, d.season_start_year,
+    g.home_club_name, g.away_club_name,
+    fg.total_goals, fg.goal_difference, fg.home_club_goals,
+    fg.away_club_goals, fg.is_home_win, fg.is_away_win, fg.is_draw,
+    fg.game_id
+ORDER BY fg.total_goals DESC, fg.goal_difference DESC
+LIMIT 25;
+
+
+-- ---------------------------------------------------------------------------
+-- 12.5  GROUPING SETS + WINDOW — Rendimiento de equipos en primera vuelta
+--                                 vs segunda vuelta de la temporada
+-- ---------------------------------------------------------------------------
+-- Pregunta: "¿Qué equipos mejoran en la segunda vuelta? ¿Cuáles bajan el ritmo?"
+-- Operaciones OLAP: SLICE (La Liga, temporada reciente) + GROUPING SETS
+--                 + WINDOW (LAG para comparar ambas vueltas)
+--   La vuelta se define por el mes: Aug-Dec = 1ª vuelta, Jan-May = 2ª vuelta
+-- Visualización: Tabla con flechas ↑↓ según mejora/empeora en 2ª vuelta
+-- Insight esperado: Equipos que fichan en enero mejoran en 2ª vuelta.
+--   Los campeones suelen tener rendimiento homogéneo en ambas vueltas.
+-- ---------------------------------------------------------------------------
+WITH resultados_vuelta AS (
+    SELECT
+        CASE
+            WHEN d.month BETWEEN 8  AND 12 THEN '1ª vuelta'
+            WHEN d.month BETWEEN 1  AND 5  THEN '2ª vuelta'
+            ELSE 'Pretemporada'
+        END                                                         AS vuelta,
+        club_id,
+        nombre_club,
+        SUM(victorias)                                              AS victorias,
+        SUM(empates)                                                AS empates,
+        SUM(derrotas)                                               AS derrotas,
+        SUM(victorias + empates + derrotas)                         AS partidos,
+        SUM(goles_favor)                                            AS gf,
+        SUM(goles_contra)                                           AS gc
+    FROM (
+        SELECT d.month, fg.home_club_id AS club_id, c.name AS nombre_club,
+            SUM(CASE WHEN fg.is_home_win THEN 1 ELSE 0 END) AS victorias,
+            SUM(CASE WHEN fg.is_draw     THEN 1 ELSE 0 END) AS empates,
+            SUM(CASE WHEN fg.is_away_win THEN 1 ELSE 0 END) AS derrotas,
+            SUM(fg.home_club_goals) AS goles_favor,
+            SUM(fg.away_club_goals) AS goles_contra
+        FROM dwh.fact_games fg
+            INNER JOIN dwh.dim_date  d ON fg.date_id  = d.date_id
+            INNER JOIN dwh.dim_clubs c ON fg.home_club_id = c.club_id
+        WHERE fg.competition_id = 'ES1'
+          AND d.season_start_year = 2023
+          AND c.club_id != -1
+        GROUP BY d.month, fg.home_club_id, c.name
+
+        UNION ALL
+
+        SELECT d.month, fg.away_club_id, c.name,
+            SUM(CASE WHEN fg.is_away_win THEN 1 ELSE 0 END),
+            SUM(CASE WHEN fg.is_draw     THEN 1 ELSE 0 END),
+            SUM(CASE WHEN fg.is_home_win THEN 1 ELSE 0 END),
+            SUM(fg.away_club_goals), SUM(fg.home_club_goals)
+        FROM dwh.fact_games fg
+            INNER JOIN dwh.dim_date  d ON fg.date_id  = d.date_id
+            INNER JOIN dwh.dim_clubs c ON fg.away_club_id = c.club_id
+        WHERE fg.competition_id = 'ES1'
+          AND d.season_start_year = 2023
+          AND c.club_id != -1
+        GROUP BY d.month, fg.away_club_id, c.name
+    ) base
+    INNER JOIN dwh.dim_date d ON d.month = base.month
+    WHERE vuelta IN ('1ª vuelta', '2ª vuelta')
+    GROUP BY vuelta, club_id, nombre_club
+)
+SELECT
+    nombre_club                                                     AS club,
+    -- Primera vuelta
+    SUM(victorias) FILTER (WHERE vuelta = '1ª vuelta')              AS v1_victorias,
+    SUM(partidos)  FILTER (WHERE vuelta = '1ª vuelta')              AS v1_partidos,
+    ROUND(100.0 * SUM(victorias) FILTER (WHERE vuelta = '1ª vuelta')
+        / NULLIF(SUM(partidos) FILTER (WHERE vuelta = '1ª vuelta'), 0), 1)
+                                                                    AS v1_pct_victoria,
+    -- Segunda vuelta
+    SUM(victorias) FILTER (WHERE vuelta = '2ª vuelta')              AS v2_victorias,
+    SUM(partidos)  FILTER (WHERE vuelta = '2ª vuelta')              AS v2_partidos,
+    ROUND(100.0 * SUM(victorias) FILTER (WHERE vuelta = '2ª vuelta')
+        / NULLIF(SUM(partidos) FILTER (WHERE vuelta = '2ª vuelta'), 0), 1)
+                                                                    AS v2_pct_victoria,
+    -- Delta (mejora o empeora en 2ª vuelta)
+    ROUND(
+        100.0 * SUM(victorias) FILTER (WHERE vuelta = '2ª vuelta')
+            / NULLIF(SUM(partidos) FILTER (WHERE vuelta = '2ª vuelta'), 0)
+      - 100.0 * SUM(victorias) FILTER (WHERE vuelta = '1ª vuelta')
+            / NULLIF(SUM(partidos) FILTER (WHERE vuelta = '1ª vuelta'), 0)
+    , 1)                                                            AS delta_pct,
+    CASE
+        WHEN ROUND(
+            100.0 * SUM(victorias) FILTER (WHERE vuelta = '2ª vuelta')
+                / NULLIF(SUM(partidos) FILTER (WHERE vuelta = '2ª vuelta'), 0)
+          - 100.0 * SUM(victorias) FILTER (WHERE vuelta = '1ª vuelta')
+                / NULLIF(SUM(partidos) FILTER (WHERE vuelta = '1ª vuelta'), 0)
+        , 1) > 5  THEN 'MEJORA 2ª vuelta ↑'
+        WHEN ROUND(
+            100.0 * SUM(victorias) FILTER (WHERE vuelta = '2ª vuelta')
+                / NULLIF(SUM(partidos) FILTER (WHERE vuelta = '2ª vuelta'), 0)
+          - 100.0 * SUM(victorias) FILTER (WHERE vuelta = '1ª vuelta')
+                / NULLIF(SUM(partidos) FILTER (WHERE vuelta = '1ª vuelta'), 0)
+        , 1) < -5 THEN 'BAJA 2ª vuelta ↓'
+        ELSE 'ESTABLE →'
+    END                                                             AS tendencia
+FROM resultados_vuelta
+GROUP BY nombre_club
+HAVING SUM(partidos) >= 20
+ORDER BY delta_pct DESC;
 
 -- ============================================================================
 -- FIN DEL APÉNDICE TÉCNICO
