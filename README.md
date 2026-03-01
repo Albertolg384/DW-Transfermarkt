@@ -240,7 +240,7 @@ pip install pandas sqlalchemy psycopg2-binary
 
 ---
 
-## 🐍 4. Instalar Python y dependencias en Linux (ubuntu)
+## 🐍 4. Instalar Python y dependencias en Linux (Ubuntu)
 
 ```bash
 sudo apt install python3 python3-pip python3-venv -y
