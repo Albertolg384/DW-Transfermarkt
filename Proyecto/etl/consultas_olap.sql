@@ -1672,8 +1672,8 @@ SELECT
         / NULLIF(valor_anio_anterior, 0), 1)                        AS subida_pct,
     ROUND((valor_actual - valor_anio_anterior) / 1e6, 1)           AS subida_absoluta_M,
     CASE
-        WHEN valor_anio_siguiente > valor_actual THEN 'SIGUE SUBIENDO ↑'
-        WHEN valor_anio_siguiente < valor_actual THEN 'Corrigio despues ↓'
+        WHEN valor_anio_siguiente > valor_actual THEN 'SIGUE SUBIENDO'
+        WHEN valor_anio_siguiente < valor_actual THEN 'Corrigio despues'
         ELSE '-'
     END                                                             AS tendencia_siguiente_anio
 FROM con_lag
