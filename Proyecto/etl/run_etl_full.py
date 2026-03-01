@@ -8,7 +8,7 @@ import subprocess
 from datetime import datetime
 import os
 
-# Directorio donde están todos los scripts ETL
+# Directorio donde estan todos los scripts ETL
 SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)))
 
 def print_header(title):
@@ -53,7 +53,7 @@ def truncate_all_tables():
 def run_script(script_name):
     """Ejecuta un script Python y captura excepciones"""
     script_path = os.path.join(SCRIPTS_DIR, script_name)
-    print(f"▶️  Ejecutando: {script_name}")
+    print(f"Ejecutando: {script_name}")
     try:
         result = subprocess.run(
             [sys.executable, script_path],
@@ -64,30 +64,30 @@ def run_script(script_name):
         print(f" {script_name} completado exitosamente\n")
         return True
     except subprocess.CalledProcessError as e:
-        print(f" ERROR en {script_name}")
-        print(f"   Código de salida: {e.returncode}\n")
+        print(f"ERROR en {script_name}")
+        print(f"Codigo de salida: {e.returncode}\n")
         return False
     except Exception as e:
-        print(f" EXCEPCIÓN en {script_name}: {e}\n")
+        print(f"EXCEPCION en {script_name}: {e}\n")
         return False
 
 def run_full_etl():
     """Ejecuta el ETL completo en orden"""
     start_time = datetime.now()
     
-    print_header("🚀 INICIANDO ETL COMPLETO - DATA WAREHOUSE TRANSFERMARKT")
+    print_header("INICIANDO ETL COMPLETO - DATA WAREHOUSE TRANSFERMARKT")
     print(f"Fecha/Hora inicio: {start_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
 
     # Limpiar/Vaciar los datos de las tablas por si ya estaban generadas dicha tablas.
     truncate_all_tables()
     
-    # Lista de scripts en orden de ejecución
+    # Lista de scripts en orden de ejecucion
     scripts = [
-        # FASE 0: Validar configuración
-        ("config.py", "Validación de configuración"),
+        # FASE 0: Validar configuracion
+        ("config.py", "Validacion de configuracion"),
         
-        # FASE 1: Generar dimensión fecha
-        ("generate_dim_date.py", "Generación de dim_date"),
+        # FASE 1: Generar dimension fecha
+        ("generate_dim_date.py", "Generacion de dim_date"),
         
         # FASE 2: Cargar dimensiones
         ("etl_dim_competitions.py", "ETL dim_competitions"),
@@ -102,8 +102,8 @@ def run_full_etl():
         ("etl_fact_transfers.py", "ETL fact_transfers (si existe)"),
         ("etl_fact_player_valuations.py", "ETL fact_player_valuations"),
         
-        # FASE 4: Validación final
-        ("validate_dwh.py", "Validación del DWH"),
+        # FASE 4: Validacion final
+        ("validate_dwh.py", "Validacion del DWH"),
     ]
     
     results = []
@@ -114,7 +114,7 @@ def run_full_etl():
         results.append((script, success))
         
         if not success:
-            print("\n ERROR CRÍTICO: Deteniendo ETL")
+            print("\n ERROR CRiTICO: Deteniendo ETL")
             print(f"   Script fallido: {script}")
             print("   Revisa los logs y corrige antes de continuar.\n")
             break
@@ -123,37 +123,37 @@ def run_full_etl():
     end_time = datetime.now()
     duration = end_time - start_time
     
-    print_header("📊 RESUMEN DE EJECUCIÓN ETL")
+    print_header("RESUMEN DE EJECUCION ETL")
     
     print("Estado por script:")
     for script, success in results:
-        status = " OK" if success else " FALLÓ"
+        status = " OK" if success else " FALLO"
         print(f"   {status}  {script}")
     
     print(f"\nFecha/Hora fin: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Duración total: {duration}")
+    print(f"Duracion total: {duration}")
     
     success_count = sum(1 for _, s in results if s)
     total_count = len(results)
     
     if success_count == total_count:
-        print("\n🎉 ETL COMPLETADO EXITOSAMENTE")
-        print("   Todas las tablas cargadas y validadas.")
-        print("   Siguiente paso: Consultas OLAP y optimizaciones.\n")
+        print("\nETL COMPLETADO EXITOSAMENTE")
+        print("Todas las tablas cargadas y validadas.")
+        print("Siguiente paso: Consultas OLAP y optimizaciones.\n")
     else:
         print(f"\n ETL INCOMPLETO: {success_count}/{total_count} scripts exitosos")
-        print("   Revisa los errores antes de continuar.\n")
+        print("Revisa los errores antes de continuar.\n")
 
 if __name__ == "__main__":
     print("""
-    ╔================================================================╗
+    {================================================================}
     |          ETL DATA WAREHOUSE - TRANSFERMARKT DATASET            |
     |                                                                |
     |  ADVERTENCIA:                                                  |
-    |  - Asegúrate de haber ejecutado el DDL (ddl_dwh_schema.sql)   |
-    |  - Configura la password en config.py antes de ejecutar       |
-    |  - Este proceso puede tardar varios minutos                   |
-    ╚================================================================╝
+    |  - Asegurate de haber ejecutado el DDL (ddl_dwh_schema.sql)    |
+    |  - Configura la password en config.py antes de ejecutar        |
+    |  - Este proceso puede tardar varios minutos                    |
+    {================================================================}
     """)
     
     response = input("¿Continuar con el ETL completo? (s/n): ")

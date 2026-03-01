@@ -5,23 +5,23 @@ ETL para dim_players (tabla de jugadores)
 """
 import pandas as pd
 from sqlalchemy import text
-from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG, BATCH_SIZE
+from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG
 from null_handler import apply_null_rules, validate_no_nulls
 
 def etl_dim_players():
-    """Extrae, transforma y carga la dimensión de jugadores"""
-    print("👤 ETL: dim_players")
+    """Extrae, transforma y carga la dimension de jugadores"""
+    print("ETL: dim_players")
     print("=" * 60)
     
     # EXTRACT
-    print("1️⃣ Extrayendo players.csv...")
+    print("Extrayendo players.csv...")
     df = pd.read_csv(CSV_FILES['players'], **PANDAS_READ_CONFIG)
-    print(f"   ✓ {len(df):,} registros leídos")
+    print(f"{len(df):,} registros leidos")
     
     # TRANSFORM
-    print("2️⃣ Transformando...")
+    print("Transformando...")
     
-    # Columnas esperadas (ajustar según el CSV real)
+    # Columnas esperadas (ajustar segun el CSV real)
     columns_to_keep = [
         'player_id', 'first_name', 'last_name', 'name', 'last_season',
         'current_club_id', 'player_code', 'country_of_birth', 'city_of_birth',
@@ -41,7 +41,7 @@ def etl_dim_players():
         if col in dim_players.columns:
             dim_players[col] = pd.to_datetime(dim_players[col], errors='coerce')
     
-    # Convertir numéricos
+    # Convertir numericos
     numeric_cols = ['height_in_cm', 'market_value_in_eur', 'highest_market_value_in_eur', 'current_club_id']
     for col in numeric_cols:
         if col in dim_players.columns:
@@ -52,22 +52,22 @@ def etl_dim_players():
     dim_players = dim_players.drop_duplicates(subset=['player_id'])
     duplicates = original_count - len(dim_players)
     if duplicates > 0:
-        print(f"    {duplicates} duplicados eliminados")
+        print(f"{duplicates} duplicados eliminados")
     
-    # Validación: asegurar que player_id no sea nulo
+    # Validacion: asegurar que player_id no sea nulo
     nulls = dim_players['player_id'].isna().sum()
     if nulls > 0:
-        print(f"    {nulls} registros con player_id NULL eliminados")
+        print(f"{nulls} registros con player_id NULL eliminados")
         dim_players = dim_players[dim_players['player_id'].notna()]
     
-    # TRATAMIENTO CENTRALIZADO DE NULLs (módulo null_handler)
+    # TRATAMIENTO CENTRALIZADO DE NULLs (modulo null_handler)
     dim_players = apply_null_rules(dim_players, 'dim_players', is_dimension=True)
     validate_no_nulls(dim_players, 'dim_players')
     
-    print(f"   ✓ {len(dim_players):,} registros listos para carga")
+    print(f"{len(dim_players):,} registros listos para carga")
     
     # LOAD
-    print("3️⃣ Cargando a PostgreSQL (dwh.dim_players)...")
+    print("Cargando a PostgreSQL (dwh.dim_players)...")
     engine = get_engine()
     
     dim_players.to_sql(
@@ -98,14 +98,14 @@ def etl_dim_players():
             ON CONFLICT (player_id) DO NOTHING
         """))
         conn.commit()
-    print("   🏷️ Registro centinela (player_id=-1, 'Desconocido') insertado")
+    print("Registro centinela (player_id=-1, 'Desconocido') insertado")
     
-    print(" dim_players cargada exitosamente")
+    print("dim_players cargada exitosamente")
     
-    # Verificación
+    # Verificacion
     with engine.connect() as conn:
         count = conn.execute(text("SELECT COUNT(*) FROM dwh.dim_players")).fetchone()[0]
-        print(f"   Verificación: {count:,} registros en dwh.dim_players\n")
+        print(f"Verificacion: {count:,} registros en dwh.dim_players\n")
 
 if __name__ == "__main__":
     etl_dim_players()

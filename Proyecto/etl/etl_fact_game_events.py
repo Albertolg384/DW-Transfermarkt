@@ -5,21 +5,21 @@ ETL para fact_game_events (eventos minuto a minuto en partidos)
 """
 import pandas as pd
 from sqlalchemy import text
-from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG, BATCH_SIZE
+from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG
 from null_handler import apply_null_rules, validate_no_nulls
 
 def etl_fact_game_events():
     """Extrae, transforma y carga la tabla de hechos de eventos"""
-    print("⚡ ETL: fact_game_events")
+    print("ETL: fact_game_events")
     print("=" * 60)
     
     # EXTRACT
-    print("1️⃣ Extrayendo game_events.csv...")
+    print("Extrayendo game_events.csv...")
     df = pd.read_csv(CSV_FILES['game_events'], **PANDAS_READ_CONFIG)
-    print(f"   ✓ {len(df):,} registros leídos")
+    print(f"{len(df):,} registros leidos")
     
     # TRANSFORM
-    print("2️⃣ Transformando...")
+    print("Transformando...")
     
     # Obtener date_id y competition_id desde dim_games
     engine = get_engine()
@@ -55,7 +55,7 @@ def etl_fact_game_events():
     available_cols = [col for col in columns_to_load if col in fact_events.columns]
     fact_events = fact_events[available_cols].copy()
 
-    # Limpieza de description (lógica de negocio específica)
+    # Limpieza de description (logica de negocio especifica)
     if 'description' in fact_events.columns:
         fact_events['description'] = (
             fact_events['description']
@@ -65,7 +65,7 @@ def etl_fact_game_events():
         )
 
     # ------------------------------------------------------------------
-    # LÓGICA DE NEGOCIO ESPECÍFICA (antes del tratamiento de NULLs)
+    # LOGICA DE NEGOCIO ESPECiFICA (antes del tratamiento de NULLs)
     # ------------------------------------------------------------------
     
     # player_in_id: SOLO aplica en Substitutions
@@ -76,7 +76,7 @@ def etl_fact_game_events():
             (fact_events['type'] != 'Substitutions')
         )
         if inconsistencias_in.any():
-            print(f"    {inconsistencias_in.sum()} player_in_id en evento no-sustitución --> NULL")
+            print(f"{inconsistencias_in.sum()} player_in_id en evento no-sustitucion --> NULL")
             fact_events.loc[inconsistencias_in, 'player_in_id'] = None
 
     # player_assist_id: SOLO aplica en Goals
@@ -87,41 +87,41 @@ def etl_fact_game_events():
             (fact_events['type'] != 'Goals')
         )
         if inconsistencias_assist.any():
-            print(f"    {inconsistencias_assist.sum()} player_assist_id en evento no-gol --> NULL")
+            print(f"{inconsistencias_assist.sum()} player_assist_id en evento no-gol --> NULL")
             fact_events.loc[inconsistencias_assist, 'player_assist_id'] = None
 
     # player_id: puede ser NULL en eventos de equipo (FK nullable en DDL)
 
     
-    # TRATAMIENTO CENTRALIZADO DE NULLs (módulo null_handler)
+    # TRATAMIENTO CENTRALIZADO DE NULLs (modulo null_handler)
     fact_events = apply_null_rules(fact_events, 'fact_game_events', is_dimension=False)
     validate_no_nulls(fact_events, 'fact_game_events')
     
-    # Validación: eliminar registros con FK críticas NULL (player_id puede ser NULL)
+    # Validacion: eliminar registros con FK criticas NULL (player_id puede ser NULL)
     critical_cols = ['event_id', 'game_id', 'club_id', 'date_id']
-    # Filtrar solo columnas críticas que existan
+    # Filtrar solo columnas criticas que existan
     critical_cols = [col for col in critical_cols if col in fact_events.columns]
     nulls_before = len(fact_events)
     fact_events = fact_events.dropna(subset=critical_cols)
     nulls_removed = nulls_before - len(fact_events)
     if nulls_removed > 0:
-        print(f"    {nulls_removed} registros con FK críticas NULL eliminados")
+        print(f"{nulls_removed} registros con FK criticas NULL eliminados")
     
     # Verificar integridad referencial (solo para valores no NULL)
-    print("   🔍 Verificando integridad referencial...")
+    print("Verificando integridad referencial...")
     
     # Validar game_id
     valid_games = pd.read_sql('SELECT game_id FROM dwh.dim_games', engine)
     invalid_games = ~fact_events['game_id'].isin(valid_games['game_id'])
     if invalid_games.any():
-        print(f"    {invalid_games.sum()} registros con game_id inválido eliminados")
+        print(f"{invalid_games.sum()} registros con game_id invalido eliminados")
         fact_events = fact_events[~invalid_games]
     
     # Validar club_id
     valid_clubs = pd.read_sql('SELECT club_id FROM dwh.dim_clubs', engine)
     invalid_clubs = ~fact_events['club_id'].isin(valid_clubs['club_id'])
     if invalid_clubs.any():
-        print(f"    {invalid_clubs.sum()} registros con club_id inválido eliminados")
+        print(f"{invalid_clubs.sum()} registros con club_id invalido eliminados")
         fact_events = fact_events[~invalid_clubs]
     
     # Validar player_id (solo si no es NULL)
@@ -132,10 +132,10 @@ def etl_fact_game_events():
             ~fact_events['player_id'].isin(valid_players['player_id'])
         )
         if invalid_players.any():
-            print(f"    {invalid_players.sum()} registros con player_id inválido eliminados")
+            print(f"{invalid_players.sum()} registros con player_id invalido eliminados")
             fact_events = fact_events[~invalid_players]
     
-    # Validar player_in_id: inválidos --> centinela -1 (Desconocido)
+    # Validar player_in_id: invalidos --> centinela -1 (Desconocido)
     if 'player_in_id' in fact_events.columns:
         valid_players = pd.read_sql('SELECT player_id FROM dwh.dim_players', engine)
         invalid_in = (
@@ -144,10 +144,10 @@ def etl_fact_game_events():
             ~fact_events['player_in_id'].isin(valid_players['player_id'])
         )
         if invalid_in.any():
-            print(f"    {invalid_in.sum()} player_in_id fuera del dataset --> centinela (-1)")
+            print(f"{invalid_in.sum()} player_in_id fuera del dataset --> centinela (-1)")
             fact_events.loc[invalid_in, 'player_in_id'] = -1
     
-    # Validar player_assist_id: inválidos --> centinela -1 (Desconocido)
+    # Validar player_assist_id: invalidos --> centinela -1 (Desconocido)
     if 'player_assist_id' in fact_events.columns:
         invalid_assist = (
             fact_events['player_assist_id'].notna() & 
@@ -155,7 +155,7 @@ def etl_fact_game_events():
             ~fact_events['player_assist_id'].isin(valid_players['player_id'])
         )
         if invalid_assist.any():
-            print(f"    {invalid_assist.sum()} player_assist_id fuera del dataset --> centinela (-1)")
+            print(f"{invalid_assist.sum()} player_assist_id fuera del dataset --> centinela (-1)")
             fact_events.loc[invalid_assist, 'player_assist_id'] = -1
     
     # Reporte de NULLs residuales (solo en campos no-nullable)
@@ -168,10 +168,10 @@ def etl_fact_game_events():
     else:
         print(f"{nulls_remaining} NULLs residuales en campos no-nullable (revisar)")
 
-    print(f"   ✓ {len(fact_events):,} registros listos para carga")
+    print(f"{len(fact_events):,} registros listos para carga")
     
     # LOAD
-    print("3️⃣ Cargando a PostgreSQL (dwh.fact_game_events)...")
+    print("Cargando a PostgreSQL (dwh.fact_game_events)...")
     
     fact_events.to_sql(
         'fact_game_events',
@@ -183,12 +183,12 @@ def etl_fact_game_events():
         chunksize=5000
     )
     
-    print(" fact_game_events cargada exitosamente")
+    print("fact_game_events cargada exitosamente")
     
-    # Verificación
+    # Verificacion
     with engine.connect() as conn:
         count = conn.execute(text("SELECT COUNT(*) FROM dwh.fact_game_events")).fetchone()[0]
-        print(f"   Verificación: {count:,} registros en dwh.fact_game_events\n")
+        print(f"Verificacion: {count:,} registros en dwh.fact_game_events\n")
 
 if __name__ == "__main__":
     etl_fact_game_events()

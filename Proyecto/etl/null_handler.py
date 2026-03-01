@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Módulo centralizado para normalización de NULLs en el DWH
+Modulo centralizado para normalizacion de NULLs en el DWH
 Estrategia Kimball: 
-- Dimensiones: textos='N/A', numéricos según naturaleza
-- Hechos: textos='Unknown', numéricos según naturaleza
+- Dimensiones: textos='N/A', numericos segun naturaleza
+- Hechos: textos='Unknown', numericos segun naturaleza
 - Medidas agregables (goals, assists) = 0
 - Atributos/clasificadores (season, minute, attendance) = -1
 - Monetarios = -1
@@ -17,10 +17,10 @@ from datetime import datetime
 # ============================================================
 DIMENSION_TEXT_DEFAULT = 'N/A'
 FACT_TEXT_DEFAULT = 'Unknown'
-MEASURE_DEFAULT = 0           # Para métricas agregables (goals, assists, minutes_played)
+MEASURE_DEFAULT = 0           # Para metricas agregables (goals, assists, minutes_played)
 ATTRIBUTE_DEFAULT = -1        # Para clasificadores (season, minute, attendance, height)
 MONETARY_DEFAULT = -1         # Para valores monetarios
-FK_OPTIONAL_DEFAULT = -1      # Para FK opcionales: apunta a registro centinela (-1) en la dimensión
+FK_OPTIONAL_DEFAULT = -1      # Para FK opcionales: apunta a registro centinela (-1) en la dimension
 DATE_UNKNOWN = '1900-01-01'   # Fecha desconocida
 DATE_NO_EXPIRY = '9999-12-31' # Sin vencimiento
 
@@ -33,7 +33,7 @@ NULL_RULES = {
     # DIMENSIONES
     # ========================================
     'dim_date': {
-        # Tabla generada, no debería tener NULLs
+        # Tabla generada, no deberia tener NULLs
     },
     
     'dim_competitions': {
@@ -115,17 +115,17 @@ NULL_RULES = {
 }
 
 # ============================================================
-# FUNCIONES DE NORMALIZACIÓN
+# FUNCIONES DE NORMALIZACION
 # ============================================================
 
 def apply_null_rules(df: pd.DataFrame, table_name: str, is_dimension: bool = True) -> pd.DataFrame:
     """
-    Aplica reglas de normalización de NULLs según la tabla.
+    Aplica reglas de normalizacion de NULLs segun la tabla.
     
     Args:
         df: DataFrame con los datos
         table_name: Nombre de la tabla (debe estar en NULL_RULES)
-        is_dimension: True si es dimensión (textos='N/A'), False si es hecho (textos='Unknown')
+        is_dimension: True si es dimension (textos='N/A'), False si es hecho (textos='Unknown')
     
     Returns:
         DataFrame con NULLs normalizados
@@ -157,7 +157,7 @@ def apply_null_rules(df: pd.DataFrame, table_name: str, is_dimension: bool = Tru
         if col in df.columns:
             df[col] = df[col].fillna(MONETARY_DEFAULT)
     
-    # FK opcionales: apuntan al registro centinela (-1) en la dimensión
+    # FK opcionales: apuntan al registro centinela (-1) en la dimension
     for col in rules.get('fk_optional', []):
         if col in df.columns:
             df[col] = df[col].fillna(FK_OPTIONAL_DEFAULT)
@@ -187,7 +187,7 @@ def apply_null_rules(df: pd.DataFrame, table_name: str, is_dimension: bool = Tru
 def validate_no_nulls(df: pd.DataFrame, table_name: str) -> bool:
     """
     Valida que no queden NULLs en el DataFrame.
-    Con registros centinela, NINGUNA columna debería tener NULLs.
+    Con registros centinela, NINGUNA columna deberia tener NULLs.
     
     Args:
         df: DataFrame a validar
@@ -200,12 +200,12 @@ def validate_no_nulls(df: pd.DataFrame, table_name: str) -> bool:
     nulls_found = null_counts[null_counts > 0]
     
     if len(nulls_found) > 0:
-        print(f" Tabla '{table_name}' aún contiene NULLs:")
+        print(f" Tabla '{table_name}' aun contiene NULLs:")
         for col, count in nulls_found.items():
             print(f"   - {col}: {count} NULLs")
         return False
     
-    print(f" Tabla '{table_name}': 0 NULLs (normalización completa)")
+    print(f" Tabla '{table_name}': 0 NULLs (normalizacion completa)")
     return True
 
 
@@ -233,20 +233,20 @@ if __name__ == "__main__":
         is_dim = table_name.startswith('dim_')
         text_default = DIMENSION_TEXT_DEFAULT if is_dim else FACT_TEXT_DEFAULT
         
-        print(f"📋 {table_name} ({'DIMENSIÓN' if is_dim else 'HECHO'})")
-        print(f"   Textos --> '{text_default}'")
+        print(f"{table_name} ({'DIMENSION' if is_dim else 'HECHO'})")
+        print(f"Textos --> '{text_default}'")
         
         if rules.get('numeric_measure'):
-            print(f"   Medidas agregables --> {MEASURE_DEFAULT}: {rules['numeric_measure']}")
+            print(f"Medidas agregables --> {MEASURE_DEFAULT}: {rules['numeric_measure']}")
         if rules.get('numeric_attribute'):
-            print(f"   Atributos/clasificadores --> {ATTRIBUTE_DEFAULT}: {rules['numeric_attribute']}")
+            print(f"Atributos/clasificadores --> {ATTRIBUTE_DEFAULT}: {rules['numeric_attribute']}")
         if rules.get('monetary'):
-            print(f"   Monetarios --> {MONETARY_DEFAULT}: {rules['monetary']}")
+            print(f"Monetarios --> {MONETARY_DEFAULT}: {rules['monetary']}")
         if rules.get('fk_optional'):
-            print(f"   FK opcionales --> {FK_OPTIONAL_DEFAULT}: {rules['fk_optional']}")
+            print(f"FK opcionales --> {FK_OPTIONAL_DEFAULT}: {rules['fk_optional']}")
         if rules.get('date_unknown'):
-            print(f"   Fechas desconocidas --> '{DATE_UNKNOWN}': {rules['date_unknown']}")
+            print(f"Fechas desconocidas --> '{DATE_UNKNOWN}': {rules['date_unknown']}")
         if rules.get('date_no_expiry'):
-            print(f"   Fechas sin vencimiento --> '{DATE_NO_EXPIRY}': {rules['date_no_expiry']}")
+            print(f"Fechas sin vencimiento --> '{DATE_NO_EXPIRY}': {rules['date_no_expiry']}")
         
         print()

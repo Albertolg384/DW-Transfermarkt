@@ -11,7 +11,7 @@ clubs = pd.read_csv(CSV_FILES['clubs'], encoding='utf-8')
 appearances = pd.read_csv(CSV_FILES['appearances'], encoding='utf-8')
 
 print("=" * 80)
-print("CASO CONCRETO: ¿Por qué se filtró el game_id 2320450?")
+print("CASO CONCRETO: ¿Por que se filtro el game_id 2320450?")
 print("=" * 80)
 
 # Buscar el partido
@@ -42,11 +42,11 @@ if away_exists:
 
 if not home_exists:
     print(f"\nHome club NO encontrado:")
-    print(f"club_id {int(game['home_club_id'])} no está en clubs.csv")
-    print(f"home_club_name es NaN (vacío) --> Confirma que el club no existe")
+    print(f"club_id {int(game['home_club_id'])} no esta en clubs.csv")
+    print(f"home_club_name es NaN (vacio) --> Confirma que el club no existe")
 
-print(f"\nPASO 3: DECISIÓN DEL ETL")
-print(f"Código en etl_dim_games.py:")
+print(f"\nPASO 3: DECISIoN DEL ETL")
+print(f"Codigo en etl_dim_games.py:")
 print(f"dim_games = dim_games[")
 print(f"dim_games['home_club_id'].isin(valid_clubs['club_id']) &")
 print(f"dim_games['away_club_id'].isin(valid_clubs['club_id'])")
@@ -59,7 +59,7 @@ print(f"\nPASO 4: IMPACTO EN CASCADA")
 game_appearances = appearances[appearances['game_id'] == 2320450]
 print(f"- Este partido tiene {len(game_appearances)} appearances en appearances.csv")
 print(f"- Como el partido se filtra de dim_games...")
-print(f"- ...esas {len(game_appearances)} appearances también se filtran de fact_appearances")
+print(f"- ...esas {len(game_appearances)} appearances tambien se filtran de fact_appearances")
 print(f"- (No se pueden tener appearances de un partido que no existe)")
 
 if len(game_appearances) > 0:
@@ -67,19 +67,19 @@ if len(game_appearances) > 0:
     for _, app in game_appearances.head(3).iterrows():
         print(f"- {app['player_name']} (player_id: {app['player_id']})")
 
-print(f"\nPASO 5: ¿POR QUÉ PASA ESTO?")
+print(f"\nPASO 5: ¿POR QUE PASA ESTO?")
 print(f"clubs.csv tiene solo 439 clubs principales")
 print(f"games.csv incluye partidos de clubs de ligas menores")
 print(f"El home_club_id {int(game['home_club_id'])} probablemente es:")
-print(f"- Un equipo de división inferior")
+print(f"- Un equipo de division inferior")
 print(f"- Un club amateur")
 print(f"- Un equipo que no fue scrapeado en clubs.csv")
 
-print(f"\nCONCLUSIÓN:")
-print(f" Es correcto filtrar este partido porque:")
-print(f" 1. No podemos tener FK apuntando a clubs inexistentes")
-print(f" 2. Los queries JOIN fallarían")
-print(f" 3. Los reports mostrarían datos incompletos")
-print(f" 4. Violamos integridad referencial del DWH")
+print(f"\nCONCLUSION:")
+print(f"Es correcto filtrar este partido porque:")
+print(f"1. No podemos tener FK apuntando a clubs inexistentes")
+print(f"2. Los queries JOIN fallarian")
+print(f"3. Los reports mostrarian datos incompletos")
+print(f"4. Violamos integridad referencial del DWH")
 
 print("\n" + "=" * 80)

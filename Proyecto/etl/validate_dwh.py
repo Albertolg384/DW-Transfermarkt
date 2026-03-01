@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 """
-Validación post-carga del Data Warehouse
-Verifica conteos, integridad referencial y datos críticos
+Validacion post-carga del Data Warehouse
+Verifica conteos, integridad referencial y datos criticos.
 """
 import pandas as pd
 from config import get_engine
@@ -10,7 +10,7 @@ from config import get_engine
 def validate_dwh():
     """Ejecuta todas las validaciones del DWH"""
     print("=" * 70)
-    print("🔍 VALIDACIÓN DEL DATA WAREHOUSE")
+    print("VALIDACION DEL DATA WAREHOUSE")
     print("=" * 70)
     
     engine = get_engine()
@@ -18,7 +18,7 @@ def validate_dwh():
     # ============================================================
     # 1. CONTEO DE REGISTROS POR TABLA
     # ============================================================
-    print("\n1️⃣ CONTEO DE REGISTROS POR TABLA")
+    print("\nCONTEO DE REGISTROS POR TABLA")
     print("-" * 70)
     
     query_counts = """
@@ -48,9 +48,9 @@ def validate_dwh():
     print(counts.to_string(index=False))
     
     # ============================================================
-    # 2. INTEGRIDAD REFERENCIAL (Registros huérfanos)
+    # 2. INTEGRIDAD REFERENCIAL (Registros huerfanos)
     # ============================================================
-    print("\n2️⃣ INTEGRIDAD REFERENCIAL (detectar FK sin padre)")
+    print("\nINTEGRIDAD REFERENCIAL (detectar FK sin padre)")
     print("-" * 70)
     
     # fact_games --> dim_competitions
@@ -95,12 +95,12 @@ def validate_dwh():
     """
     orphans_date = pd.read_sql(query_orphan_date, engine).iloc[0, 0]
     status_date = "" if orphans_date == 0 else f" {orphans_date}"
-    print(f"   fact_games --> dim_date:          {status_date}")
+    print(f"   fact_games --> dim_date:      {status_date}")
     
     # ============================================================
-    # 3. VALIDACIÓN DE NULOS EN CAMPOS CRÍTICOS
+    # 3. VALIDACION DE NULOS EN CAMPOS CRiTICOS
     # ============================================================
-    print("\n3️⃣ VALIDACIÓN DE NULOS EN PKs Y FKs CRÍTICAS")
+    print("\n VALIDACION DE NULOS EN PKs Y FKs CRiTICAS")
     print("-" * 70)
     
     query_nulls = """
@@ -114,12 +114,12 @@ def validate_dwh():
     print("   fact_games:")
     for col, val in nulls.iloc[0].items():
         status = "" if val == 0 else f" {int(val)}"
-        print(f"      {col}: {status}")
+        print(f"  {col}: {status}")
     
     # ============================================================
-    # 4. VALIDACIÓN DE RANGOS DE FECHAS
+    # 4. VALIDACION DE RANGOS DE FECHAS
     # ============================================================
-    print("\n4️⃣ RANGOS DE FECHAS")
+    print("\nRANGOS DE FECHAS")
     print("-" * 70)
     
     query_date_range = """
@@ -131,13 +131,13 @@ def validate_dwh():
         JOIN dwh.fact_games fg ON dd.date_id = fg.date_id;
     """
     date_range = pd.read_sql(query_date_range, engine)
-    print(f"   Rango en fact_games: {date_range.iloc[0, 0]} --> {date_range.iloc[0, 1]}")
-    print(f"   Años distintos: {date_range.iloc[0, 2]}")
+    print(f"Rango en fact_games: {date_range.iloc[0, 0]} --> {date_range.iloc[0, 1]}")
+    print(f"Años distintos: {date_range.iloc[0, 2]}")
     
     # ============================================================
-    # 5. ESTADÍSTICAS BÁSICAS
+    # 5. ESTADiSTICAS BASICAS
     # ============================================================
-    print("\n5️⃣ ESTADÍSTICAS BÁSICAS")
+    print("\nESTADiSTICAS BASICAS")
     print("-" * 70)
     
     # Promedio de goles por partido
@@ -151,12 +151,12 @@ def validate_dwh():
         FROM dwh.fact_games;
     """
     stats = pd.read_sql(query_avg_goals, engine)
-    print("   fact_games:")
-    print(f"      Promedio goles/partido: {stats.iloc[0, 0]}")
-    print(f"      Máximo goles en partido: {stats.iloc[0, 1]}")
-    print(f"      Victorias local: {stats.iloc[0, 2]:,}")
-    print(f"      Empates: {stats.iloc[0, 3]:,}")
-    print(f"      Victorias visitante: {stats.iloc[0, 4]:,}")
+    print("fact_games:")
+    print(f"Promedio goles/partido: {stats.iloc[0, 0]}")
+    print(f"Maximo goles en partido: {stats.iloc[0, 1]}")
+    print(f"Victorias local: {stats.iloc[0, 2]:,}")
+    print(f"Empates: {stats.iloc[0, 3]:,}")
+    print(f"Victorias visitante: {stats.iloc[0, 4]:,}")
     
     # ============================================================
     # RESUMEN FINAL
@@ -164,10 +164,10 @@ def validate_dwh():
     print("\n" + "=" * 70)
     total_issues = orphans_comp + orphans_home + orphans_away + orphans_date + nulls.sum().sum()
     if total_issues == 0:
-        print(" VALIDACIÓN COMPLETADA: Sin problemas detectados")
+        print("VALIDACION COMPLETADA: Sin problemas detectados")
     else:
-        print(f" VALIDACIÓN COMPLETADA: {int(total_issues)} problema(s) detectado(s)")
-        print("   Revisar detalles arriba y corregir antes de OLAP.")
+        print(f"VALIDACION COMPLETADA: {int(total_issues)} problema(s) detectado(s)")
+        print("Revisar detalles arriba y corregir antes de OLAP.")
     print("=" * 70)
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Generador de la tabla de dimensión dim_date
+Generador de la tabla de dimension dim_date
 Crea registros desde 2000-01-01 hasta 2030-12-31
 """
 import pandas as pd
@@ -9,13 +9,13 @@ from sqlalchemy import text
 from config import get_engine
 
 def generate_dim_date():
-    """Genera y carga la dimensión fecha"""
-    print("📅 Generando dimensión dim_date...")
+    """Genera y carga la dimension fecha"""
+    print("Generando dimension dim_date...")
     
     # Rango de fechas (30 años de datos)
     date_range = pd.date_range(start='2000-01-01', end='2030-12-31', freq='D')
     
-    # Construcción del DataFrame
+    # Construccion del DataFrame
     dim_date = pd.DataFrame({
         'date_id': date_range.strftime('%Y%m%d').astype(int),
         'full_date': date_range.date,  # Solo fecha, sin hora
@@ -32,8 +32,8 @@ def generate_dim_date():
         'season_start_year': date_range.year - (date_range.month < 7).astype(int)
     })
     
-    print(f"   ✓ {len(dim_date):,} fechas generadas")
-    print(f"   Rango: {dim_date['full_date'].min()} --> {dim_date['full_date'].max()}")
+    print(f"{len(dim_date):,} fechas generadas")
+    print(f"Rango: {dim_date['full_date'].min()} --> {dim_date['full_date'].max()}")
     
     # Cargar a PostgreSQL
     engine = get_engine()
@@ -47,12 +47,12 @@ def generate_dim_date():
         chunksize=5000
     )
     
-    print(" dim_date cargada exitosamente\n")
+    print("dim_date cargada exitosamente\n")
     
-    # Verificación
+    # Verificacion
     with engine.connect() as conn:
         count = conn.execute(text("SELECT COUNT(*) FROM dwh.dim_date")).fetchone()[0]
-        print(f"   Verificación: {count:,} registros en dwh.dim_date")
+        print(f"Verificacion: {count:,} registros en dwh.dim_date")
 
 if __name__ == "__main__":
     generate_dim_date()

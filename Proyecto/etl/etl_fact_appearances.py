@@ -6,23 +6,23 @@ Desnormaliza appearances.csv + game_lineups.csv
 """
 import pandas as pd
 from sqlalchemy import text
-from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG, BATCH_SIZE
+from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG
 from null_handler import apply_null_rules, validate_no_nulls
 
 def etl_fact_appearances():
     """Extrae, transforma y carga la tabla de hechos de apariciones"""
-    print("👕 ETL: fact_appearances (appearances + game_lineups)")
+    print("ETL: fact_appearances (appearances + game_lineups)")
     print("=" * 60)
     
     # EXTRACT
-    print("1️⃣ Extrayendo appearances.csv y game_lineups.csv...")
+    print("Extrayendo appearances.csv y game_lineups.csv...")
     appearances = pd.read_csv(CSV_FILES['appearances'], **PANDAS_READ_CONFIG)
     lineups = pd.read_csv(CSV_FILES['game_lineups'], **PANDAS_READ_CONFIG)
-    print(f"   ✓ appearances: {len(appearances):,} registros")
-    print(f"   ✓ game_lineups: {len(lineups):,} registros")
+    print(f"appearances: {len(appearances):,} registros")
+    print(f"game_lineups: {len(lineups):,} registros")
     
     # TRANSFORM
-    print("2️⃣ Transformando y desnormalizando...")
+    print("Transformando y desnormalizando...")
     
     # Merge appearances con lineups
     fact_appearances = appearances.merge(
@@ -54,7 +54,7 @@ def etl_fact_appearances():
 
     # ------------------------------------------------------------------
     # ------------------------------------------------------------------
-    # TRATAMIENTO CENTRALIZADO DE NULLs (módulo null_handler)
+    # TRATAMIENTO CENTRALIZADO DE NULLs (modulo null_handler)
     # ------------------------------------------------------------------
     # Estos NULLs vienen del LEFT JOIN con game_lineups:
     # si un jugador aparece en appearances pero no en game_lineups,
@@ -63,15 +63,15 @@ def etl_fact_appearances():
     fact_appearances = apply_null_rules(fact_appearances, 'fact_appearances', is_dimension=False)
     validate_no_nulls(fact_appearances, 'fact_appearances')
     
-    # Validación: eliminar registros con FK críticas NULL (ANTES de seleccionar columnas)
+    # Validacion: eliminar registros con FK criticas NULL (ANTES de seleccionar columnas)
     critical_cols = ['appearance_id', 'game_id', 'player_id', 'club_id', 'competition_id', 'date_id']
-    # Filtrar solo columnas críticas que existan
+    # Filtrar solo columnas criticas que existan
     critical_cols = [col for col in critical_cols if col in fact_appearances.columns]
     nulls_before = len(fact_appearances)
     fact_appearances = fact_appearances.dropna(subset=critical_cols)
     nulls_removed = nulls_before - len(fact_appearances)
     if nulls_removed > 0:
-        print(f"    {nulls_removed} registros con FK NULL eliminados")
+        print(f"{nulls_removed} registros con FK NULL eliminados")
     
     # Seleccionar columnas finales
     columns_to_load = [
@@ -85,27 +85,27 @@ def etl_fact_appearances():
     fact_appearances = fact_appearances[available_cols].copy()
     
     # Verificar integridad referencial
-    print("   🔍 Verificando integridad referencial...")
+    print("Verificando integridad referencial...")
     
     # Validar game_id
     valid_games = pd.read_sql('SELECT game_id FROM dwh.dim_games', engine)
     invalid_games = ~fact_appearances['game_id'].isin(valid_games['game_id'])
     if invalid_games.any():
-        print(f"    {invalid_games.sum()} registros con game_id inválido eliminados")
+        print(f"{invalid_games.sum()} registros con game_id invalido eliminados")
         fact_appearances = fact_appearances[~invalid_games]
     
     # Validar player_id
     valid_players = pd.read_sql('SELECT player_id FROM dwh.dim_players', engine)
     invalid_players = ~fact_appearances['player_id'].isin(valid_players['player_id'])
     if invalid_players.any():
-        print(f"    {invalid_players.sum()} registros con player_id inválido eliminados")
+        print(f"{invalid_players.sum()} registros con player_id invalido eliminados")
         fact_appearances = fact_appearances[~invalid_players]
     
     # Validar club_id
     valid_clubs = pd.read_sql('SELECT club_id FROM dwh.dim_clubs', engine)
     invalid_clubs = ~fact_appearances['club_id'].isin(valid_clubs['club_id'])
     if invalid_clubs.any():
-        print(f"    {invalid_clubs.sum()} registros con club_id inválido eliminados")
+        print(f"{invalid_clubs.sum()} registros con club_id invalido eliminados")
         fact_appearances = fact_appearances[~invalid_clubs]
     
     # Reporte de NULLs residuales
@@ -119,7 +119,7 @@ def etl_fact_appearances():
     print(f"{len(fact_appearances):,} registros listos para carga")
     
     # LOAD
-    print("3️⃣ Cargando a PostgreSQL (dwh.fact_appearances)...")
+    print("Cargando a PostgreSQL (dwh.fact_appearances)...")
     
     fact_appearances.to_sql(
         'fact_appearances',
@@ -131,12 +131,12 @@ def etl_fact_appearances():
         chunksize=5000
     )
     
-    print(" fact_appearances cargada exitosamente")
+    print("fact_appearances cargada exitosamente")
     
-    # Verificación
+    # Verificacion
     with engine.connect() as conn:
         count = conn.execute(text("SELECT COUNT(*) FROM dwh.fact_appearances")).fetchone()[0]
-        print(f"   Verificación: {count:,} registros en dwh.fact_appearances\n")
+        print(f"Verificacion: {count:,} registros en dwh.fact_appearances\n")
 
 if __name__ == "__main__":
     etl_fact_appearances()

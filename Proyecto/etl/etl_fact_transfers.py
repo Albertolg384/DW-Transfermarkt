@@ -7,11 +7,11 @@ PK artificial: transfer_id (autoincremental en PostgreSQL)
 import pandas as pd
 import re
 from sqlalchemy import text
-from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG, BATCH_SIZE
+from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG
 from null_handler import apply_null_rules, validate_no_nulls
 
 def parse_transfer_fee(fee_str):
-    """Convierte strings de transfer_fee a EUR numérico"""
+    """Convierte strings de transfer_fee a EUR numerico"""
     if pd.isna(fee_str) or fee_str == '':
         return None
     
@@ -58,12 +58,12 @@ def etl_fact_transfers():
     print("=" * 60)
     
     # EXTRACT
-    print("1️⃣ Extrayendo transfers.csv...")
+    print("Extrayendo transfers.csv...")
     df = pd.read_csv(CSV_FILES['transfers'], **PANDAS_READ_CONFIG)
-    print(f"   ✓ {len(df):,} registros leídos")
+    print(f"{len(df):,} registros leidos")
     
     # TRANSFORM
-    print("2️⃣ Transformando...")
+    print("Transformando...")
     
     # Convertir fecha de traspaso y generar date_id
     if 'transfer_date' in df.columns:
@@ -95,24 +95,24 @@ def etl_fact_transfers():
     available_cols = [col for col in columns_to_load if col in fact_transfers.columns]
     fact_transfers = fact_transfers[available_cols].copy()
     
-    # Validación: eliminar registros con FK críticas NULL
+    # Validacion: eliminar registros con FK criticas NULL
     # Nota: from_club_id y to_club_id pueden ser NULL si vienen/van fuera del dataset
     critical_cols = ['player_id', 'transfer_date_id']
     nulls_before = len(fact_transfers)
     fact_transfers = fact_transfers.dropna(subset=critical_cols)
     nulls_removed = nulls_before - len(fact_transfers)
     if nulls_removed > 0:
-        print(f"    {nulls_removed} registros con FK críticas NULL eliminados")
+        print(f"{nulls_removed} registros con FK criticas NULL eliminados")
     
     # Verificar integridad referencial
-    print("   🔍 Verificando integridad referencial...")
+    print("Verificando integridad referencial...")
     engine = get_engine()
     
     # Validar player_id
     valid_players = pd.read_sql('SELECT player_id FROM dwh.dim_players', engine)
     invalid_players = ~fact_transfers['player_id'].isin(valid_players['player_id'])
     if invalid_players.any():
-        print(f"    {invalid_players.sum()} registros con player_id inválido eliminados")
+        print(f"{invalid_players.sum()} registros con player_id invalido eliminados")
         fact_transfers = fact_transfers[~invalid_players]
     
     # Validar from_club_id (solo si no es NULL)
@@ -126,7 +126,7 @@ def etl_fact_transfers():
             ~fact_transfers['from_club_id'].isin(valid_clubs['club_id'])
         )
         if invalid_from.any():
-            print(f"    {invalid_from.sum()} from_club_id fuera del dataset --> centinela (-1)")
+            print(f"{invalid_from.sum()} from_club_id fuera del dataset --> centinela (-1)")
             fact_transfers.loc[invalid_from, 'from_club_id'] = -1
 
     # to_club_id: si no existe en dim_clubs --> centinela -1 (Desconocido)
@@ -136,31 +136,31 @@ def etl_fact_transfers():
             ~fact_transfers['to_club_id'].isin(valid_clubs['club_id'])
         )
         if invalid_to.any():
-            print(f"    {invalid_to.sum()} to_club_id fuera del dataset --> centinela (-1)")
+            print(f"{invalid_to.sum()} to_club_id fuera del dataset --> centinela (-1)")
             fact_transfers.loc[invalid_to, 'to_club_id'] = -1
     
     # Validar date_id
     valid_dates = pd.read_sql('SELECT date_id FROM dwh.dim_date', engine)
     invalid_dates = ~fact_transfers['transfer_date_id'].isin(valid_dates['date_id'])
     if invalid_dates.any():
-        print(f"    {invalid_dates.sum()} registros con date_id inválido eliminados")
+        print(f"{invalid_dates.sum()} registros con date_id invalido eliminados")
         fact_transfers = fact_transfers[~invalid_dates]
     
     # ------------------------------------------------------------------
     # TRATAMIENTO DE NULLs
     # ------------------------------------------------------------------
-    # TRATAMIENTO CENTRALIZADO DE NULLs (módulo null_handler)
+    # TRATAMIENTO CENTRALIZADO DE NULLs (modulo null_handler)
     # ------------------------------------------------------------------
     fact_transfers = apply_null_rules(fact_transfers, 'fact_transfers', is_dimension=False)
     validate_no_nulls(fact_transfers, 'fact_transfers')
 
     # from_club_id / to_club_id: quedan con -1 (FK opcionales: cantera/retiro)
-    # Nota: null_handler ya los convirtió a -1
+    # Nota: null_handler ya los convirtio a -1
 
     # ------------------------------------------------------------------
 
-    # Validación de NULLs (solo columnas críticas)
-    # from_club_id y to_club_id PUEDEN ser -1 legítimamente (FK opcionales)
+    # Validacion de NULLs (solo columnas criticas)
+    # from_club_id y to_club_id PUEDEN ser -1 legitimamente (FK opcionales)
     cols_no_nullable = ['player_id', 'transfer_date_id', 'transfer_season',
                         'player_name', 'from_club_name', 'to_club_name',
                         'transfer_fee', 'market_value_in_eur']
@@ -172,10 +172,10 @@ def etl_fact_transfers():
     else:
         print(f" {nulls_remaining} NULLs residuales detectados (revisar)")
         print(fact_transfers[cols_no_nullable].isnull().sum()[fact_transfers[cols_no_nullable].isnull().sum() > 0])
-    print(f"   ✓ {len(fact_transfers):,} registros listos para carga")
+    print(f"{len(fact_transfers):,} registros listos para carga")
     
     # LOAD
-    print("3️⃣ Cargando a PostgreSQL (dwh.fact_transfers)...")
+    print("Cargando a PostgreSQL (dwh.fact_transfers)...")
     
     fact_transfers.to_sql(
         'fact_transfers',
@@ -187,12 +187,12 @@ def etl_fact_transfers():
         chunksize=5000
     )
     
-    print(" fact_transfers cargada exitosamente")
+    print("fact_transfers cargada exitosamente")
     
-    # Verificación
+    # Verificacion
     with engine.connect() as conn:
         count = conn.execute(text("SELECT COUNT(*) FROM dwh.fact_transfers")).fetchone()[0]
-        print(f"   Verificación: {count:,} registros en dwh.fact_transfers\n")
+        print(f"Verificacion: {count:,} registros en dwh.fact_transfers\n")
 
 if __name__ == "__main__":
     etl_fact_transfers()

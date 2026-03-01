@@ -6,25 +6,25 @@ Desnormaliza games.csv + club_games.csv
 """
 import pandas as pd
 from sqlalchemy import text
-from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG, BATCH_SIZE
+from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG
 from null_handler import apply_null_rules, validate_no_nulls
 
 def etl_fact_games():
     """Extrae, transforma y carga la tabla de hechos de partidos"""
-    print("📊 ETL: fact_games (games + club_games desnormalizados)")
+    print("ETL: fact_games (games + club_games desnormalizados)")
     print("=" * 60)
     
     # EXTRACT
-    print("1️⃣ Extrayendo games.csv y club_games.csv...")
+    print("Extrayendo games.csv y club_games.csv...")
     games = pd.read_csv(CSV_FILES['games'], **PANDAS_READ_CONFIG)
     club_games = pd.read_csv(CSV_FILES['club_games'], **PANDAS_READ_CONFIG)
-    print(f"   ✓ games: {len(games):,} registros")
-    print(f"   ✓ club_games: {len(club_games):,} registros")
+    print(f"games: {len(games):,} registros")
+    print(f"Club_games: {len(club_games):,} registros")
     
     # TRANSFORM
-    print("2️⃣ Transformando y desnormalizando...")
+    print("Transformando y desnormalizando...")
     
-    # Eliminar columnas de posición de games si existen (usaremos las de club_games)
+    # Eliminar columnas de posicion de games si existen (usaremos las de club_games)
     games = games.drop(columns=['home_club_position', 'away_club_position'], errors='ignore')
     
     # Normalizar valores de 'hosting' por si vienen con espacios o mayus distinta.
@@ -64,7 +64,7 @@ def etl_fact_games():
     fact_games = fact_games[columns_to_load].copy()
     
     # ------------------------------------------------------------------
-    # TRATAMIENTO CENTRALIZADO DE NULLs (módulo null_handler)
+    # TRATAMIENTO CENTRALIZADO DE NULLs (modulo null_handler)
     # ------------------------------------------------------------------
     fact_games = apply_null_rules(fact_games, 'fact_games', is_dimension=False)
     validate_no_nulls(fact_games, 'fact_games')
@@ -76,30 +76,30 @@ def etl_fact_games():
     fact_games['is_draw'] = fact_games['goal_difference'] == 0
     fact_games['is_away_win'] = fact_games['goal_difference'] < 0
 
-    # Validación: eliminar registros con FK críticas NULL
+    # Validacion: eliminar registros con FK criticas NULL
     critical_cols = ['game_id', 'competition_id', 'home_club_id', 'away_club_id', 'date_id']
     nulls_before = len(fact_games)
     fact_games = fact_games.dropna(subset=critical_cols)
     nulls_removed = nulls_before - len(fact_games)
     if nulls_removed > 0:
-        print(f"    {nulls_removed} registros con FK NULL eliminados")
+        print(f"{nulls_removed} registros con FK NULL eliminados")
     
     # Verificar que las FK existen en dimensiones (integridad referencial)
-    print("   🔍 Verificando integridad referencial...")
+    print("Verificando integridad referencial...")
     engine = get_engine()
     
     # Validar game_id
     valid_games = pd.read_sql('SELECT game_id FROM dwh.dim_games', engine)
     invalid_games = ~fact_games['game_id'].isin(valid_games['game_id'])
     if invalid_games.any():
-        print(f"    {invalid_games.sum()} registros con game_id inválido eliminados")
+        print(f"{invalid_games.sum()} registros con game_id invalido eliminados")
         fact_games = fact_games[~invalid_games]
     
     # Validar competition_id
     valid_competitions = pd.read_sql('SELECT competition_id FROM dwh.dim_competitions', engine)
     invalid_comp = ~fact_games['competition_id'].isin(valid_competitions['competition_id'])
     if invalid_comp.any():
-        print(f"    {invalid_comp.sum()} registros con competition_id inválido eliminados")
+        print(f"{invalid_comp.sum()} registros con competition_id invalido eliminados")
         fact_games = fact_games[~invalid_comp]
     
     # Validar clubs
@@ -108,14 +108,14 @@ def etl_fact_games():
     invalid_away = ~fact_games['away_club_id'].isin(valid_clubs['club_id'])
     if invalid_home.any() or invalid_away.any():
         total_invalid = invalid_home.sum() + invalid_away.sum()
-        print(f"    {total_invalid} registros con club_id inválido eliminados")
+        print(f"{total_invalid} registros con club_id invalido eliminados")
         fact_games = fact_games[~(invalid_home | invalid_away)]
     
     # Validar date_id
     valid_dates = pd.read_sql('SELECT date_id FROM dwh.dim_date', engine)
     invalid_dates = ~fact_games['date_id'].isin(valid_dates['date_id'])
     if invalid_dates.any():
-        print(f"    {invalid_dates.sum()} registros con date_id inválido eliminados")
+        print(f"{invalid_dates.sum()} registros con date_id invalido eliminados")
         fact_games = fact_games[~invalid_dates]
 
     # Reporte de NULLs residuales (debe ser 0 en todo)
@@ -125,10 +125,10 @@ def etl_fact_games():
     else:
         print(f"{nulls_remaining} NULLs residuales detectados (revisar)")
     
-    print(f"   ✓ {len(fact_games):,} registros listos para carga")
+    print(f"{len(fact_games):,} registros listos para carga")
     
     # LOAD
-    print("3️⃣ Cargando a PostgreSQL (dwh.fact_games)...")
+    print("Cargando a PostgreSQL (dwh.fact_games)...")
     
     fact_games.to_sql(
         'fact_games',
@@ -142,10 +142,10 @@ def etl_fact_games():
     
     print(" fact_games cargada exitosamente")
     
-    # Verificación
+    # Verificacion
     with engine.connect() as conn:
         count = conn.execute(text("SELECT COUNT(*) FROM dwh.fact_games")).fetchone()[0]
-        print(f"   Verificación: {count:,} registros en dwh.fact_games\n")
+        print(f"Verificacion: {count:,} registros en dwh.fact_games\n")
 
 if __name__ == "__main__":
     etl_fact_games()

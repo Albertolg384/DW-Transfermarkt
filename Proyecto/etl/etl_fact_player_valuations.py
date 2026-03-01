@@ -6,21 +6,21 @@ PK artificial: valuation_id (autoincremental en PostgreSQL)
 """
 import pandas as pd
 from sqlalchemy import text
-from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG, BATCH_SIZE
+from config import get_engine, CSV_FILES, PANDAS_READ_CONFIG
 from null_handler import apply_null_rules, validate_no_nulls
 
 def etl_fact_player_valuations():
     """Extrae, transforma y carga la tabla de hechos de valoraciones"""
-    print("💰 ETL: fact_player_valuations")
+    print("ETL: fact_player_valuations")
     print("=" * 60)
     
     # EXTRACT
-    print("1️⃣ Extrayendo player_valuations.csv...")
+    print("Extrayendo player_valuations.csv...")
     df = pd.read_csv(CSV_FILES['player_valuations'], **PANDAS_READ_CONFIG)
-    print(f"   ✓ {len(df):,} registros leídos")
+    print(f"{len(df):,} registros leidos")
     
     # TRANSFORM
-    print("2️⃣ Transformando...")
+    print("Transformando...")
     
     # Convertir fecha y generar date_id
     df['date'] = pd.to_datetime(df['date'], errors='coerce')
@@ -39,47 +39,47 @@ def etl_fact_player_valuations():
     
     fact_valuations = fact_valuations[columns_to_load].copy()
     
-    # TRATAMIENTO CENTRALIZADO DE NULLs (módulo null_handler)
+    # TRATAMIENTO CENTRALIZADO DE NULLs (modulo null_handler)
     fact_valuations = apply_null_rules(fact_valuations, 'fact_player_valuations', is_dimension=False)
     validate_no_nulls(fact_valuations, 'fact_player_valuations')
     
-    # Validación: eliminar registros con FK críticas NULL
+    # Validacion: eliminar registros con FK criticas NULL
     critical_cols = ['player_id', 'club_id', 'date_id']
     nulls_before = len(fact_valuations)
     fact_valuations = fact_valuations.dropna(subset=critical_cols)
     nulls_removed = nulls_before - len(fact_valuations)
     if nulls_removed > 0:
-        print(f"    {nulls_removed} registros con FK NULL eliminados")
+        print(f"{nulls_removed} registros con FK NULL eliminados")
     
     # Verificar integridad referencial
-    print("   🔍 Verificando integridad referencial...")
+    print("Verificando integridad referencial...")
     engine = get_engine()
     
     # Validar player_id
     valid_players = pd.read_sql('SELECT player_id FROM dwh.dim_players', engine)
     invalid_players = ~fact_valuations['player_id'].isin(valid_players['player_id'])
     if invalid_players.any():
-        print(f"    {invalid_players.sum()} registros con player_id inválido eliminados")
+        print(f"{invalid_players.sum()} registros con player_id invalido eliminados")
         fact_valuations = fact_valuations[~invalid_players]
     
     # Validar club_id
     valid_clubs = pd.read_sql('SELECT club_id FROM dwh.dim_clubs', engine)
     invalid_clubs = ~fact_valuations['club_id'].isin(valid_clubs['club_id'])
     if invalid_clubs.any():
-        print(f"    {invalid_clubs.sum()} registros con club_id inválido eliminados")
+        print(f"{invalid_clubs.sum()} registros con club_id invalido eliminados")
         fact_valuations = fact_valuations[~invalid_clubs]
     
     # Validar date_id
     valid_dates = pd.read_sql('SELECT date_id FROM dwh.dim_date', engine)
     invalid_dates = ~fact_valuations['date_id'].isin(valid_dates['date_id'])
     if invalid_dates.any():
-        print(f"    {invalid_dates.sum()} registros con date_id inválido eliminados")
+        print(f"{invalid_dates.sum()} registros con date_id invalido eliminados")
         fact_valuations = fact_valuations[~invalid_dates]
     
-    print(f"   ✓ {len(fact_valuations):,} registros listos para carga")
+    print(f"{len(fact_valuations):,} registros listos para carga")
     
     # LOAD
-    print("3️⃣ Cargando a PostgreSQL (dwh.fact_player_valuations)...")
+    print("Cargando a PostgreSQL (dwh.fact_player_valuations)...")
     
     fact_valuations.to_sql(
         'fact_player_valuations',
@@ -91,12 +91,12 @@ def etl_fact_player_valuations():
         chunksize=5000
     )
     
-    print(" fact_player_valuations cargada exitosamente")
+    print("fact_player_valuations cargada exitosamente")
     
-    # Verificación
+    # Verificacion
     with engine.connect() as conn:
         count = conn.execute(text("SELECT COUNT(*) FROM dwh.fact_player_valuations")).fetchone()[0]
-        print(f"   Verificación: {count:,} registros en dwh.fact_player_valuations\n")
+        print(f"Verificacion: {count:,} registros en dwh.fact_player_valuations\n")
 
 if __name__ == "__main__":
     etl_fact_player_valuations()
