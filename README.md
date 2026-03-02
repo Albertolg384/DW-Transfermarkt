@@ -4,7 +4,7 @@ DW con ETL completo sobre el dataset de [Transfermarkt](https://www.kaggle.com/d
 
 ---
 
-## 📁 Estructura del proyecto
+## 📁 Estructura General del proyecto
 
 ```
 DW-Transfermarkt/
