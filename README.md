@@ -45,6 +45,7 @@ DW-Transfermarkt/
 ├── ddl_dwh_schema.sql <--- DDL del esquema (ejecutar antes del ETL)
 └── README.md
 ```
+Nota: al clonarse el proyecto, los archivos .csv git no los descarga bien, por eso pasar esos archivos .xlsx a formato .csv y sustituirlos por los de la carpeta Formato_csv
 
 ---
 
@@ -89,7 +90,7 @@ Si el servicio estuviera detenido, iniciarlo con (PowerShell como administrador)
 Start-Service -Name "postgresql-x64-17"   # ajustar el número de versión
 ```
 
-## 🐧 1. Instalación de PostgreSQL en Linux(Ubuntu)
+## 🐧 1. Instalación de PostgreSQL en Linux (Ubuntu)
 
 ```bash
 sudo apt update
@@ -239,7 +240,7 @@ pip install pandas sqlalchemy psycopg2-binary
 
 ---
 
-## 🐍 4. Instalar Python y dependencias en Linux (ubuntu)
+## 🐍 4. Instalar Python y dependencias en Linux (Ubuntu)
 
 ```bash
 sudo apt install python3 python3-pip python3-venv -y
@@ -477,7 +478,7 @@ python3 informe_filtraciones.py
 
 ## 📊 9. Consultas OLAP
 
-El archivo `consultas_olap.sql` contiene **54 consultas** organizadas en 13 secciones:
+El archivo `consultas_olap.sql` contiene **49 consultas** organizadas en 12 secciones:
 
 | Sección | Operación | Nº consultas |
 |---------|-----------|-------------|
@@ -493,7 +494,6 @@ El archivo `consultas_olap.sql` contiene **54 consultas** organizadas en 13 secc
 | 10 | Apéndice técnico / auditoría Kimball | 1 |
 | 11 | Análisis individual de jugadores | 5 |
 | 12 | Equipos, competición y táctica | 5 |
-| 13 | Mercado de fichajes avanzado | 5 |
 
 Ejecutar desde `psql` o cualquier cliente SQL (DBeaver, DataGrip, pgAdmin):
 
