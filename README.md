@@ -90,7 +90,7 @@ Si el servicio estuviera detenido, iniciarlo con (PowerShell como administrador)
 Start-Service -Name "postgresql-x64-17"   # ajustar el número de versión
 ```
 
-## 🐧 1. Instalación de PostgreSQL en Linux(Ubuntu)
+## 🐧 1. Instalación de PostgreSQL en Linux (Ubuntu)
 
 ```bash
 sudo apt update
