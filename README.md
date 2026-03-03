@@ -41,7 +41,15 @@ DW-Transfermarkt/
 │       ├── informe_filtraciones.py
 │       ├── comparacion_filtrados_validos.py
 │       ├── ejemplo_filtrado.py
-|       └── consultas_olap.sql <--- Consultas OLAP 
+|       ├── visualizaciones_olap.pynb <--- Jupyter Notebook con las visualizaciones del "negocio".
+|       └── consultas_olap.sql <--- Consultas OLAP
+|
+├── Documentación/
+│   ├── Caballero_Lillo_DW - LabBook.pdf
+│   ├── Caballero_Lillo_DW - Presentación.pdf
+│   ├── Caballero_Lillo_DW - Presentación.pptx
+│   └── Caballero_Lillo_DW - Trabajo.pdf
+|
 ├── ddl_dwh_schema.sql <--- DDL del esquema (ejecutar antes del ETL)
 └── README.md
 ```
