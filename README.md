@@ -41,7 +41,7 @@ DW-Transfermarkt/
 │       ├── informe_filtraciones.py
 │       ├── comparacion_filtrados_validos.py
 │       ├── ejemplo_filtrado.py
-|       ├── visualizaciones_olap.pynb <--- Jupyter Notebook con las visualizaciones del "negocio".
+|       ├── visualizaciones_olap.ipynb <--- Jupyter Notebook con las visualizaciones del "negocio".
 |       └── consultas_olap.sql <--- Consultas OLAP
 |
 ├── Documentación/
@@ -86,7 +86,7 @@ Esquema en **constelación estrella** con 5 dimensiones y 5 tablas de hechos:
    - Dejar marcado **Stack Builder** si aparece (se puede omitir al final)
 4. Al finalizar, PostgreSQL queda instalado como servicio de Windows y arranca automáticamente con el sistema.
 
-Para verificar que está corriendo, abrir el **Administrador de tareas → Servicios** y buscar `postgresql-x64-XX` con estado **En ejecución**, o ejecutar en PowerShell:
+Para verificar que está corriendo, abrir el **Administrador de tareas --> Servicios** y buscar `postgresql-x64-XX` con estado **En ejecución**, o ejecutar en PowerShell:
 
 ```powershell
 Get-Service -Name postgresql*
@@ -117,8 +117,8 @@ sudo systemctl status postgresql
 
 PostgreSQL instala `psql` en su carpeta `bin` (normalmente `C:\Program Files\PostgreSQL\17\bin`). Para poder usarlo desde cualquier terminal hay que añadir esa ruta al **PATH** del sistema:
 
-1. Buscar **"Variables de entorno"** en el menú Inicio → **Editar las variables de entorno del sistema**
-2. En **Variables del sistema** → seleccionar `Path` → **Editar** → **Nuevo**
+1. Buscar **"Variables de entorno"** en el menú Inicio --> **Editar las variables de entorno del sistema**
+2. En **Variables del sistema** --> seleccionar `Path` --> **Editar** --> **Nuevo**
 3. Añadir: `C:\Program Files\PostgreSQL\17\bin` (ajustar el número de versión)
 4. Aceptar y cerrar. Abrir una terminal nueva para que el cambio surta efecto.
 
@@ -237,7 +237,7 @@ deactivate
 Con el entorno virtual activo:
 
 ```powershell
-pip install pandas sqlalchemy psycopg2-binary
+pip install pandas sqlalchemy psycopg2-binary matplotlib seaborn numpy jupyter
 ```
 
 | Librería | Para qué sirve |
@@ -245,6 +245,10 @@ pip install pandas sqlalchemy psycopg2-binary
 | `pandas` | Leer los CSVs, transformar los datos en DataFrames y aplicar toda la lógica ETL (filtros, merges, fillna, cálculos de columnas) |
 | `sqlalchemy` | ORM y motor de conexión a PostgreSQL. Permite ejecutar SQL directamente desde Python y usar `to_sql()` para insertar DataFrames enteros en la base de datos |
 | `psycopg2-binary` | Driver nativo de PostgreSQL para Python. SQLAlchemy lo usa internamente para comunicarse con la base de datos. La versión `-binary` incluye todas las dependencias compiladas, por lo que **no requiere instalar** nada adicional del sistema |
+| `matplotlib` | Librería base de visualización. Genera los gráficos de barras, líneas, áreas y el radar chart usados en `visualizaciones_olap.ipynb` |
+| `seaborn` | Capa de alto nivel sobre matplotlib. Simplifica gráficos estadísticos como heatmaps y distribuciones con estilos más limpios |
+| `numpy` | Operaciones numéricas vectorizadas. Se usa en el notebook para cálculos de percentiles, normalizaciones y construcción del radar chart |
+| `jupyter` | Entorno interactivo para ejecutar el notebook `visualizaciones_olap.ipynb` directamente en el navegador |
 
 ---
 
@@ -270,7 +274,7 @@ deactivate
 ### Instalar las librerías
 
 ```bash
-pip install pandas sqlalchemy psycopg2-binary
+pip install pandas sqlalchemy psycopg2-binary matplotlib seaborn numpy jupyter
 ```
 
 | Librería | Para qué sirve |
@@ -278,6 +282,10 @@ pip install pandas sqlalchemy psycopg2-binary
 | `pandas` | Leer los CSVs, transformar los datos en DataFrames y aplicar toda la lógica ETL (filtros, merges, fillna, cálculos de columnas) |
 | `sqlalchemy` | ORM y motor de conexión a PostgreSQL. Permite ejecutar SQL directamente desde Python y usar `to_sql()` para insertar DataFrames enteros en la base de datos |
 | `psycopg2-binary` | Driver nativo de PostgreSQL para Python. SQLAlchemy lo usa internamente para comunicarse con la base de datos. La versión `-binary` incluye todas las dependencias compiladas, por lo que **no requiere instalar** `libpq-dev` ni compiladores del sistema |
+| `matplotlib` | Librería base de visualización. Genera los gráficos de barras, líneas, áreas y el radar chart usados en `visualizaciones_olap.ipynb` |
+| `seaborn` | Capa de alto nivel sobre matplotlib. Simplifica gráficos estadísticos como heatmaps y distribuciones con estilos más limpios |
+| `numpy` | Operaciones numéricas vectorizadas. Se usa en el notebook para cálculos de percentiles, normalizaciones y construcción del radar chart |
+| `jupyter` | Entorno interactivo para ejecutar el notebook `visualizaciones_olap.ipynb` directamente en el navegador |
 
 ---
 
@@ -511,6 +519,58 @@ psql -h localhost -U postgres -d football_dwh -f consultas_olap.sql | more
 
 ---
 
+## 📈 10. Visualizaciones OLAP (Jupyter Notebook)
+
+El archivo `visualizaciones_olap.ipynb` contiene **10 visualizaciones interactivas** ejecutadas directamente sobre el DWH PostgreSQL, cada una correspondiente a una consulta de `consultas_olap.sql`.
+
+| Visualización | Consulta | Tipo de gráfico |
+|---|---|---|
+| 1 | 9.1 — Top 25 goleadores históricos | Barras horizontales |
+| 2 | 9.4 — Factor campo por liga | Barras apiladas 100% |
+| 3 | 9.5 — Pichichi por temporada (2015–2024) | Heatmap |
+| 4 | 9.6 — Balance gastos/ingresos por club | Barras divergentes |
+| 5 | 9.7 — Goles por franja de minuto | Histograma de área |
+| 6 | 9.9 — Inflación del mercado (2012–2025) | Líneas doble eje |
+| 7 | 9.10 — Comparativa KPI Big Five | Radar chart |
+| 8 | 12.2 — Gasto en fichajes vs % victorias | Scatter plot |
+| 9 | 12.3 — Temporada más goleadora por liga | Líneas con anotaciones |
+| 10 | 12.3 — Ranking temporadas más goleadoras | Barras horizontales |
+
+> **Requisito previo:** el ETL debe haberse ejecutado correctamente antes de abrir el notebook (los datos tienen que estar cargados en PostgreSQL).
+
+### Lanzar el notebook en Windows
+
+```powershell
+# Con el entorno virtual activo y desde la carpeta del proyecto
+cd Proyecto\etl
+jupyter notebook visualizaciones_olap.ipynb
+```
+
+Se abrirá automáticamente el navegador. Si no se abre solo, copiar la URL que aparece en la terminal (del tipo `http://localhost:8888/...`) y pegarla en el navegador.
+
+### Lanzar el notebook en Linux (Ubuntu)
+
+```bash
+# Con el entorno virtual activo y desde la carpeta del proyecto
+cd Proyecto/etl
+jupyter notebook visualizaciones_olap.ipynb
+```
+
+### Configurar la conexión dentro del notebook
+
+La primera celda de código del notebook solicita la contraseña de PostgreSQL de forma interactiva mediante `getpass` para no escribirla en texto plano. Si prefieres omitir ese paso, edita la celda de conexión y sustituye la llamada a `getpass.getpass()` por tu contraseña directamente (no recomendado si el notebook se va a compartir):
+
+```python
+# Opción cómoda (solo para uso local, no compartir)
+PASSWORD = "tu_contraseña"
+```
+
+### Ejecutar todas las celdas de golpe
+
+Una vez abierto el notebook: **Kernel --> Restart & Run All**. Cada sección se ejecuta de forma independiente, por lo que también puedes correr las celdas una a una con `Shift + Enter`.
+
+---
+
 ## ⚠️ Solución de problemas frecuentes en Windows
 
 **Error: `password authentication failed`**
@@ -537,6 +597,12 @@ psql -h localhost -U postgres -d football_dwh -f consultas_olap.sql | more
 **El entorno virtual no está activo**
 -->  Ejecutar `nombre_entorno_virtual\Scripts\activate.bat` (CMD) o `nombre_entorno_virtual\Scripts\Activate.ps1` (PowerShell) desde la raíz del proyecto antes de cualquier script Python. El prompt mostrará `(nombre_entorno_virtual)` cuando esté activo.
 
+**Error: `'jupyter' is not recognized as an internal or external command`**
+-->  Jupyter no está instalado o el entorno virtual no está activo. Activar el entorno y ejecutar `pip install jupyter`.
+
+**El navegador no se abre al lanzar el notebook**
+-->  Copiar manualmente la URL que aparece en la terminal (del tipo `http://localhost:8888/?token=...`) y pegarla en el navegador.
+
 ## ⚠️ Solución de problemas frecuentes en Linux (Ubuntu)
 
 **Error: `password authentication failed`**
@@ -556,3 +622,9 @@ psql -h localhost -U postgres -d football_dwh -f consultas_olap.sql | more
 
 **El entorno virtual no está activo**
 --> Ejecutar `source venv/bin/activate` desde la raíz del proyecto antes de cualquier script Python. El prompt de la terminal mostrará `(venv)` cuando esté activo.
+
+**Error: `jupyter: command not found`**
+--> Jupyter no está instalado o el entorno virtual no está activo. Activar el entorno y ejecutar `pip install jupyter`.
+
+**El navegador no se abre al lanzar el notebook**
+--> Copiar manualmente la URL que aparece en la terminal (del tipo `http://localhost:8888/?token=...`) y pegarla en el navegador.
